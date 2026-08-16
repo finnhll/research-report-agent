@@ -116,6 +116,24 @@ class RunUsage(StrictRuntimeModel):
     replans: int = Field(default=0, ge=0)
 
 
+class RunRecord(StrictRuntimeModel):
+    """Persisted top-level state for one research run."""
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    run_id: str = Field(min_length=1)
+    goal: str = Field(min_length=1)
+    dimensions: list[str] = Field(default_factory=list)
+    phase: RunPhase = RunPhase.CREATED
+    status: RunStatus = RunStatus.RUNNING
+    budget: RunBudget = Field(default_factory=RunBudget)
+    usage: RunUsage = Field(default_factory=RunUsage)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+    completed_at: datetime | None = None
+    error: str | None = None
+
+
 class WorkerAttemptRequest(StrictRuntimeModel):
     """Input to exactly one worker attempt."""
 
@@ -193,6 +211,8 @@ class AgentEvent(StrictRuntimeModel):
 class PlannedTaskRecord(StrictRuntimeModel):
     """Persisted planning and scheduling state for one task."""
 
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
     run_id: str = Field(min_length=1)
     plan_id: str = Field(min_length=1)
     plan_version: int = Field(ge=1)
@@ -200,6 +220,8 @@ class PlannedTaskRecord(StrictRuntimeModel):
     state: TaskState = TaskState.PENDING
     attempt_count: int = Field(default=0, ge=0)
     produced_context: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class ReportDocument(StrictRuntimeModel):
@@ -219,6 +241,7 @@ __all__ = [
     "AttemptKind",
     "PlannedTaskRecord",
     "ReportDocument",
+    "RunRecord",
     "RunBudget",
     "RunPhase",
     "RunStatus",
