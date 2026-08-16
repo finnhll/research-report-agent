@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+
+# Environments
+.env
+.env.*
+.venv/
+venv/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Tooling
+.ruff_cache/
+.mypy_cache/
+.pytype/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Runtime artifacts
+logs/
+runs/
+*.log
+*.sqlite
+*.sqlite3

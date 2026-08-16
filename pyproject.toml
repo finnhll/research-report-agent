@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "research-report-agent"
+version = "0.1.0"
+description = "A Python + LangGraph multi-agent research and reporting system"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Research & Report Agent contributors" },
+]
+dependencies = [
+  "langgraph>=0.2.60",
+  "pydantic>=2.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "pytest-asyncio>=0.23.0",
+  "PyYAML>=6.0.1",
+  "ruff>=0.5.0",
+]
+
+[project.scripts]
+research-report-agent = "research_report_agent.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/research_report_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # import order
+  "B",   # bugbear
+  "UP",  # pyupgrade
+  "SIM", # simplify
+  "ASYNC",
+]
