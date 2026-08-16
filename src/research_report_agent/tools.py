@@ -87,6 +87,22 @@ _UNARY_OPERATORS = {
     ast.USub: operator.neg,
 }
 
+_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "for",
+    "from",
+    "into",
+    "of",
+    "or",
+    "the",
+    "this",
+    "to",
+    "with",
+}
+
 
 class ToolExecutor:
     """Execute typed tool requests with validation and bounded behavior."""
@@ -139,7 +155,9 @@ class ToolExecutor:
         async with self._lock:
             self.search_count += 1
 
-        terms = query.lower().split()
+        terms = [
+            term for term in query.lower().split() if len(term) >= 3 and term not in _STOPWORDS
+        ]
         results = []
         for document in SEARCH_DOCUMENTS:
             haystack = f"{document.title} {document.snippet} {document.content}".lower()
