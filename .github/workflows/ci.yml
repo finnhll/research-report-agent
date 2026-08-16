@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Python quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install package and development tools
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: Check formatting
+        run: ruff format --check .
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest
+
+  markdown-links:
+    name: Documentation links
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check for broken local documentation links
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          markdown_files = [path for path in Path(".").rglob("*.md") if ".venv" not in path.parts]
+          broken_links = []
+
+          for markdown_file in markdown_files:
+              text = markdown_file.read_text(encoding="utf-8")
+              links = re.findall(r"\[[^\]]+\]\(([^)]+)\)", text)
+              for link in links:
+                  target = urlparse(link).path.lstrip("/")
+                  if not target or urlparse(link).netloc:
+                      continue
+                  if target.startswith("#") or link.startswith("#"):
+                      continue
+                  if not (Path(target).is_file() or Path(target).is_dir()):
+                      broken_links.append(f"{markdown_file}: {link}")
+
+          if broken_links:
+              raise SystemExit("\n".join(broken_links))
+          PY
