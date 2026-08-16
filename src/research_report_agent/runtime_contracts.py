@@ -178,7 +178,7 @@ class ToolRequest(StrictRuntimeModel):
 
     request_id: str = Field(min_length=1)
     attempt_id: str = Field(min_length=1)
-    tool: ToolName
+    tool: str
     input: dict[str, Any]
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -188,7 +188,7 @@ class ToolResult(StrictRuntimeModel):
 
     request_id: str = Field(min_length=1)
     attempt_id: str = Field(min_length=1)
-    tool: ToolName
+    tool: str
     status: ToolStatus
     output: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
