@@ -168,13 +168,13 @@ Use GitHub CLI/API to enable squash merge and disable merge commits and rebase m
 
 Require pull requests, successful CI, linear history, and branch deletion before merge.
 
-Outcome: the branch-protection API returned HTTP 403 because branch protection is unavailable for private repositories on the current GitHub Free plan. The repository nevertheless uses the required workflow manually: feature branch, pull request, passing CI, squash merge, and head-branch deletion. Enforce the same policy after upgrading the plan or making the repository public.
+Outcome: after the owner made the repository public, branch protection was enabled successfully on `main`. The protected branch requires a pull request, one approving code-owner review, up-to-date CI checks, linear history, conversation resolution, and protection from force pushes and deletion. Administrator bypasses are disabled.
 
 - [x] **Step 5: Verify remote repository**
 
 Run: `git remote -v && gh repo view --json name,visibility,defaultBranchRef`
 
-Expected: repository is private, default branch is `main`, and all local commits are pushed.
+Expected: repository visibility matches the owner's current choice, default branch is `main`, and all local commits are pushed.
 
 ### Task 6: Add initial typed agent contracts
 
