@@ -148,27 +148,29 @@ Run: `git add .github && git commit -m "ci: add validation and dependency automa
 - Consumes: authenticated GitHub CLI session
 - Produces: private GitHub repository with `main` protection
 
-- [ ] **Step 1: Authenticate GitHub CLI**
+- [x] **Step 1: Authenticate GitHub CLI**
 
 Run: `gh auth login --hostname github.com --web --git-protocol https`
 
 Expected: `gh auth status` reports a valid account.
 
-- [ ] **Step 2: Create the private repository**
+- [x] **Step 2: Create the private repository**
 
 Run: `gh repo create research-report-agent --private --source . --remote origin --push`
 
 Expected: repository is created and `main` is pushed.
 
-- [ ] **Step 3: Configure repository merge policy**
+- [x] **Step 3: Configure repository merge policy**
 
 Use GitHub CLI/API to enable squash merge and disable merge commits and rebase merges.
 
-- [ ] **Step 4: Protect `main`**
+- [x] **Step 4: Protect `main`**
 
 Require pull requests, successful CI, linear history, and branch deletion before merge.
 
-- [ ] **Step 5: Verify remote repository**
+Outcome: the branch-protection API returned HTTP 403 because branch protection is unavailable for private repositories on the current GitHub Free plan. The repository nevertheless uses the required workflow manually: feature branch, pull request, passing CI, squash merge, and head-branch deletion. Enforce the same policy after upgrading the plan or making the repository public.
+
+- [x] **Step 5: Verify remote repository**
 
 Run: `git remote -v && gh repo view --json name,visibility,defaultBranchRef`
 
@@ -185,26 +187,26 @@ Expected: repository is private, default branch is `main`, and all local commits
 - Consumes: the JSON contracts in `docs/spec/design.md`
 - Produces: Pydantic models for plans, worker results, critic reviews, guardrail reviews, and reports
 
-- [ ] **Step 1: Write contract tests**
+- [x] **Step 1: Write contract tests**
 
 Create tests that validate plan size, dependency cycles, source references, guardrail verdicts, and citation maps.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_contracts.py -v`
 
 Expected: import failure for `research_report_agent.contracts`.
 
-- [ ] **Step 3: Implement Pydantic contracts**
+- [x] **Step 3: Implement Pydantic contracts**
 
 Implement typed models and semantic validators.
 
-- [ ] **Step 4: Run full quality suite**
+- [x] **Step 4: Run full quality suite**
 
 Run: `ruff format --check . && ruff check . && pytest`
 
 Expected: all checks pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run: `git add src/research_report_agent tests/test_contracts.py && git commit -m "feat: add typed agent contracts"`
