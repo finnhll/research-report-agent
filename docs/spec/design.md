@@ -4,7 +4,7 @@
 
 - **Type:** Multi-agent research and reporting system
 - **Implementation stack:** Python + LangGraph
-- **Current scope:** Design only; no implementation yet
+- **Current scope:** Fullstack implementation: Python/LangGraph orchestrator-workers, FastAPI backend, and React frontend
 - **Primary learning goal:** Understand multi-agent orchestration, structured output, retries, parallel research, safety review, and synthesis
 
 ## 1. Summary
@@ -30,6 +30,13 @@ Example final output:
 ## 2. Implementation stack
 
 The project will use **Python with LangGraph**.
+
+The fullstack runtime adds:
+
+- **Backend API:** FastAPI
+- **Frontend:** React + TypeScript + Vite
+- **Live progress:** Server-Sent Events (SSE)
+- **MVP persistence:** SQLite through async SQLAlchemy
 
 ### Recommended runtime
 
@@ -1269,3 +1276,352 @@ Recommended order:
 | Require provenance | Keeps the report auditable |
 | Treat web content as untrusted | Reduces prompt-injection risk |
 
+---
+
+## 15. Fullstack orchestrator-workers architecture
+
+### 15.1 Required topology
+
+The deployed system is organized as:
+
+```text
+React frontend
+  -> FastAPI backend
+    -> Orchestrator
+      -> Intake guardrail
+      -> Planner
+      -> Worker runtime
+      -> Critic
+      -> Synthesizer
+      -> Final-output guardrail
+```
+
+The orchestrator is the sole owner of:
+
+- Run lifecycle
+- Shared state
+- Graph transitions
+- Task dependency scheduling
+- Worker dispatch
+- Retry and revision policy
+- Budget enforcement
+- Cancellation
+- Report persistence
+- Event emission
+
+Workers are stateless executors of exactly one bounded task attempt. Workers never talk directly to each other, mutate shared state, retry themselves indefinitely, decide acceptance, or invoke the synthesizer.
+
+### 15.2 Worker runtime contract
+
+```python
+class WorkerRuntime(Protocol):
+    async def execute_attempt(
+        self,
+        attempt: WorkerAttempt,
+        context: RunContext,
+    ) -> WorkerResult: ...
+```
+
+Each attempt receives:
+
+```json
+{
+  "run_id": "run_123",
+  "plan_id": "plan_001",
+  "plan_version": 1,
+  "task_id": "task_002",
+  "attempt_id": "task_002_attempt_001",
+  "attempt_kind": "initial",
+  "question": "Compare cost drivers for the selected chemistries.",
+  "success_criteria": ["Find at least two independent sources"],
+  "upstream_context": {
+    "selected_entities": ["LFP", "NMC", "sodium-ion"]
+  },
+  "allowed_tools": ["web_search", "fetch_page"],
+  "limits": {
+    "max_reasoning_steps": 10,
+    "max_tool_calls": 6,
+    "timeout_seconds": 90
+  }
+}
+```
+
+### 15.3 Runtime object model
+
+The runtime separates phases, terminal statuses, and task states.
+
+```python
+class RunPhase(StrEnum):
+    CREATED = "created"
+    INTAKE_GUARDRAIL = "intake_guardrail"
+    PLANNING = "planning"
+    PLAN_REPAIR = "plan_repair"
+    SCHEDULING = "scheduling"
+    EXECUTING = "executing"
+    WORKER_REPAIR = "worker_repair"
+    REVIEWING = "reviewing"
+    REVISING = "revising"
+    REPLANNING = "replanning"
+    SYNTHESIZING = "synthesizing"
+    REPORT_REPAIR = "report_repair"
+    FINAL_GUARDRAIL = "final_guardrail"
+    FINALIZING = "finalizing"
+    TERMINAL = "terminal"
+
+
+class RunStatus(StrEnum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+    COMPLETE_WITH_CAVEATS = "complete_with_caveats"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+    CANCELLED = "cancelled"
+
+
+class TaskState(StrEnum):
+    PENDING = "pending"
+    BLOCKED = "blocked"
+    READY = "ready"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
+```
+
+### 15.4 Scheduler algorithm
+
+```text
+loop:
+  1. Mark tasks ready when dependency states are COMPLETED,
+     or PARTIAL with sufficient upstream context.
+
+  2. Mark dependent tasks BLOCKED when required dependencies are
+     FAILED, TIMEOUT, or otherwise unavailable.
+
+  3. Dispatch up to min(MAX_PARALLEL_WORKERS, len(ready_tasks)).
+
+  4. Persist each result as an immutable attempt.
+
+  5. Retry or revise only when orchestrator policy allows.
+
+  6. On deadline or budget exhaustion, cancel in-flight work and
+     preserve completed attempts.
+
+  7. Enter REVIEWING when no further executable work remains.
+```
+
+### 15.5 Attempt identity
+
+Every execution is bound to:
+
+```json
+{
+  "run_id": "run_123",
+  "plan_id": "plan_002",
+  "plan_version": 2,
+  "task_id": "task_003",
+  "attempt_id": "task_003_attempt_002",
+  "parent_attempt_id": "task_003_attempt_001",
+  "attempt_kind": "retry"
+}
+```
+
+Rules:
+
+- Results are append-only.
+- Old-plan results cannot satisfy a new plan automatically.
+- Carryover must be explicit.
+- Late stale attempts are archived, not accepted.
+- Report revisions receive their own version.
+
+---
+
+## 16. Backend API design
+
+### 16.1 REST surface
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/runs` | Create and start a research run |
+| `GET` | `/api/runs` | List runs |
+| `GET` | `/api/runs/{run_id}` | Get run summary |
+| `DELETE` | `/api/runs/{run_id}` | Cancel a running run |
+| `GET` | `/api/runs/{run_id}/tasks` | List task states |
+| `GET` | `/api/runs/{run_id}/attempts` | List worker attempts |
+| `GET` | `/api/runs/{run_id}/events` | Get stored event history |
+| `GET` | `/api/runs/{run_id}/stream` | Subscribe to live SSE updates |
+| `GET` | `/api/runs/{run_id}/report` | Get final report |
+| `GET` | `/api/runs/{run_id}/report.md` | Download Markdown report |
+| `GET` | `/health` | Health check |
+
+### 16.2 Event stream
+
+SSE is used for server-to-client progress updates.
+
+```json
+{
+  "event": "worker.attempt.started",
+  "run_id": "run_123",
+  "timestamp": "2026-08-16T00:01:12Z",
+  "data": {
+    "task_id": "task_002",
+    "attempt_id": "task_002_attempt_001"
+  }
+}
+```
+
+### 16.3 Persistence
+
+SQLite stores:
+
+- Runs
+- Tasks
+- Worker attempts
+- Events
+- Reports
+
+The API never exposes raw model chain-of-thought or unredacted tool output.
+
+---
+
+## 17. Frontend design
+
+### 17.1 Stack
+
+- React
+- TypeScript
+- Vite
+- React Router
+- TanStack Query
+- Native `EventSource`
+
+### 17.2 Pages
+
+1. **New run**
+   - Research goal input
+   - Required dimensions
+   - Start button
+2. **Run list**
+   - Recent runs
+   - Status badges
+3. **Run dashboard**
+   - Live phase/status
+   - Task list
+   - Worker attempts
+   - Budgets
+   - Cancellation
+4. **Report viewer**
+   - Executive summary
+   - Sections
+   - Citations
+   - Limitations
+   - Source appendix
+5. **Trace viewer**
+   - Event timeline
+   - State transitions
+   - Worker history
+
+The frontend never calls model providers or tools directly and never stores credentials.
+
+---
+
+## 18. Explicit agent loops
+
+### 18.1 Orchestrator supervisor loop
+
+```text
+initialize run
+  -> intake guardrail
+  -> plan
+  -> validate/repair plan
+  -> schedule tasks
+  -> dispatch workers
+  -> collect attempts
+  -> validate worker output
+  -> invoke critic
+  -> optionally revise or re-plan
+  -> synthesize report
+  -> final-output guardrail
+  -> persist terminal state and report
+```
+
+### 18.2 Worker ReAct loop
+
+```text
+receive one attempt
+  -> assess current evidence
+  -> if success criteria met:
+       return completed WorkerResult
+  -> if limits exhausted:
+       return partial WorkerResult with gaps
+  -> choose one allowed tool
+  -> execute typed tool request
+  -> observe sanitized output
+  -> increment counters
+  -> repeat
+```
+
+Only workers perform research tool calls. Planner, critic, synthesizer, and guardrails do not call research tools in the MVP.
+
+---
+
+## 19. Fullstack security
+
+- Model credentials remain server-side.
+- CORS is restricted to configured frontend origins.
+- API requests are validated.
+- SSE payloads are sanitized.
+- Raw chain-of-thought is not exposed.
+- Tool output is treated as data.
+- `fetch_page` blocks private, loopback, link-local, reserved, and multicast addresses.
+- Redirects are revalidated before following.
+- Response size and content type are limited.
+
+---
+
+## 20. Fullstack build milestones
+
+### Milestone F0 — Contracts and persistence
+
+Typed runtime contracts, SQLite models, repositories, event store, and API schemas.
+
+### Milestone F1 — Orchestrator and worker loop
+
+LangGraph-backed supervisor, planner, worker runtime, bounded ReAct loop, critic, guardrails, and synthesizer.
+
+### Milestone F2 — FastAPI service
+
+Run endpoints, task/attempt/event endpoints, report endpoints, cancellation, health check, and SSE stream.
+
+### Milestone F3 — React frontend
+
+Run creation, run list, live dashboard, task/attempt views, cancellation, report viewer, and trace timeline.
+
+### Milestone F4 — Verification
+
+Backend tests, frontend tests, build checks, API smoke tests, live SSE smoke test, and browser E2E smoke test.
+
+---
+
+## 21. Fullstack acceptance criteria
+
+The fullstack MVP is complete when it can:
+
+1. Accept a research goal from the browser.
+2. Apply the intake guardrail.
+3. Generate a valid 3–6 task plan.
+4. Dispatch bounded workers through the orchestrator.
+5. Execute each worker with a bounded ReAct loop.
+6. Enforce tool and step limits.
+7. Handle partial worker failure.
+8. Apply critic review.
+9. Apply final-output guardrail.
+10. Synthesize a cited report.
+11. Stream live progress through SSE.
+12. Allow browser-side cancellation.
+13. Display the report.
+14. Download Markdown.
+15. Display event and attempt history.
+16. Always reach a defined terminal state.
