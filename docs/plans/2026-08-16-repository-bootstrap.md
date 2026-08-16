@@ -174,3 +174,37 @@ Run: `git remote -v && gh repo view --json name,visibility,defaultBranchRef`
 
 Expected: repository is private, default branch is `main`, and all local commits are pushed.
 
+### Task 6: Add initial typed agent contracts
+
+**Files:**
+- Create: `src/research_report_agent/contracts.py`
+- Create: `tests/test_contracts.py`
+- Modify: `src/research_report_agent/__init__.py`
+
+**Interfaces:**
+- Consumes: the JSON contracts in `docs/spec/design.md`
+- Produces: Pydantic models for plans, worker results, critic reviews, guardrail reviews, and reports
+
+- [ ] **Step 1: Write contract tests**
+
+Create tests that validate plan size, dependency cycles, source references, guardrail verdicts, and citation maps.
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `pytest tests/test_contracts.py -v`
+
+Expected: import failure for `research_report_agent.contracts`.
+
+- [ ] **Step 3: Implement Pydantic contracts**
+
+Implement typed models and semantic validators.
+
+- [ ] **Step 4: Run full quality suite**
+
+Run: `ruff format --check . && ruff check . && pytest`
+
+Expected: all checks pass.
+
+- [ ] **Step 5: Commit**
+
+Run: `git add src/research_report_agent tests/test_contracts.py && git commit -m "feat: add typed agent contracts"`
