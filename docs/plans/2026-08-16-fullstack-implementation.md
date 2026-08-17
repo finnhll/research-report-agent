@@ -292,7 +292,7 @@ cd frontend && npm run typecheck && npm run test -- --run && npm run build
 
 ### Task 14: Pull request
 
-- [ ] Push `feat/fullstack-agent-platform`.
-- [ ] Open PR into `main`.
-- [ ] Confirm CI passes.
+- [x] Push `feat/fullstack-agent-platform`.
+- [x] Open PR into `main`.
+- [x] Confirm CI passes.
 - [ ] Provide browser and API verification summary.
