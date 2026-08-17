@@ -31,6 +31,11 @@ htmlcov/
 .vscode/
 *.swp
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
 # Runtime artifacts
 logs/
 runs/
