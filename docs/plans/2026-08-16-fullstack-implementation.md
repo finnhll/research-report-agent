@@ -1,6 +1,6 @@
 # Fullstack Research & Report Agent Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Implement the approved Python/LangGraph orchestrator-workers backend, FastAPI service, React frontend, tests, and browser-ready end-to-end workflow.
 
@@ -37,15 +37,15 @@
 **Interfaces:**
 - Produces `RunPhase`, `RunStatus`, `TaskState`, `WorkerAttempt`, `WorkerAttemptRequest`, `RunBudget`, `RunUsage`, `AgentEvent`, `ToolRequest`, `ToolResult`, `ReportDocument`
 
-- [ ] Write failing tests for:
+- [x] Write failing tests for:
   - Phase/status/task-state enum values
   - Budget limits
   - Immutable worker attempt IDs
   - Tool result timestamps
   - Event payload shape
-- [ ] Implement strict Pydantic runtime models.
-- [ ] Run `pytest tests/test_runtime_contracts.py -q`.
-- [ ] Commit: `feat: add runtime contracts`
+- [x] Implement strict Pydantic runtime models.
+- [x] Run `pytest tests/test_runtime_contracts.py -q`.
+- [x] Commit: `feat: add runtime contracts`
 
 ### Task 2: Persistence
 
@@ -64,12 +64,12 @@
 - Produces `EventRepository.append`
 - Produces `ReportRepository.save`
 
-- [ ] Write failing tests using an in-memory SQLite database.
-- [ ] Implement async SQLAlchemy models and repositories.
-- [ ] Enforce unique run/task/attempt IDs.
-- [ ] Store JSON payloads as normalized JSON strings.
-- [ ] Run `pytest tests/test_storage.py -q`.
-- [ ] Commit: `feat: add persistent run storage`
+- [x] Write failing tests using an in-memory SQLite database.
+- [x] Implement async SQLAlchemy models and repositories.
+- [x] Enforce unique run/task/attempt IDs.
+- [x] Store JSON payloads as normalized JSON strings.
+- [x] Run `pytest tests/test_storage.py -q`.
+- [x] Commit: `feat: add persistent run storage`
 
 ### Task 3: Deterministic agent tools
 
@@ -81,12 +81,12 @@
 - Produces `ToolExecutor.execute(request: ToolRequest) -> ToolResult`
 - Supports tool names `web_search`, `fetch_page`, `calculator`
 
-- [ ] Write tests for successful search, fetch, calculator, invalid input, unknown tool, timeout, and call limits.
-- [ ] Implement deterministic local search corpus.
-- [ ] Implement URL parsing and SSRF blocking for loopback/private/link-local/reserved addresses.
-- [ ] Implement deterministic arithmetic parser without `eval`.
+- [x] Write tests for successful search, fetch, calculator, invalid input, unknown tool, timeout, and call limits.
+- [x] Implement deterministic local search corpus.
+- [x] Implement URL parsing and SSRF blocking for loopback/private/link-local/reserved addresses.
+- [x] Implement deterministic arithmetic parser without `eval`.
 - [+- ] Run `pytest tests/test_tools.py -q`.
-- [ ] Commit: `feat: add bounded worker tools`
+- [x] Commit: `feat: add bounded worker tools`
 
 ### Task 4: Worker ReAct runtime
 
@@ -97,16 +97,16 @@
 **Interfaces:**
 - Produces `WorkerRuntime.execute_attempt(request: WorkerAttemptRequest) -> WorkerResult`
 
-- [ ] Write tests for completion, partial result, tool exhaustion, invalid output, and cancellation.
-- [ ] Implement bounded loop:
+- [x] Write tests for completion, partial result, tool exhaustion, invalid output, and cancellation.
+- [x] Implement bounded loop:
   - Assess evidence
   - Select next tool
   - Execute typed request
   - Sanitize observation
   - Enforce limits
   - Return structured result
-- [ ] Run `pytest tests/test_worker_runtime.py -q`.
-- [ ] Commit: `feat: add worker react runtime`
+- [x] Run `pytest tests/test_worker_runtime.py -q`.
+- [x] Commit: `feat: add worker react runtime`
 
 ### Task 5: Agents
 
@@ -124,10 +124,10 @@
 - Produces `Critic.review(results: list[WorkerResult]) -> CriticReview`
 - Produces `Synthesizer.synthesize(...) -> ReportDocument`
 
-- [ ] Write deterministic tests for safe/unsafe intake, valid plan, weak result revision, and cited synthesis.
-- [ ] Implement deterministic local MVP agents with typed outputs.
-- [ ] Ensure synthesizer uses accepted findings only.
-- [ ] Commit: `feat: add typed agent nodes`
+- [x] Write deterministic tests for safe/unsafe intake, valid plan, weak result revision, and cited synthesis.
+- [x] Implement deterministic local MVP agents with typed outputs.
+- [x] Ensure synthesizer uses accepted findings only.
+- [x] Commit: `feat: add typed agent nodes`
 
 ### Task 6: Orchestrator supervisor
 
@@ -139,8 +139,8 @@
 - Produces `Orchestrator.start(run_id, goal, dimensions)`
 - Produces `Orchestrator.cancel(run_id)`
 
-- [ ] Write tests for successful run, unsafe input, partial failure, cancellation, and terminal state.
-- [ ] Implement async supervisor loop with:
+- [x] Write tests for successful run, unsafe input, partial failure, cancellation, and terminal state.
+- [x] Implement async supervisor loop with:
   - Intake guardrail
   - Planning
   - Dependency scheduling
@@ -151,7 +151,7 @@
   - Final guardrail
   - Event emission
   - Terminal transitions
-- [ ] Commit: `feat: add orchestrator supervisor`
+- [x] Commit: `feat: add orchestrator supervisor`
 
 ### Task 7: FastAPI application
 
@@ -172,11 +172,11 @@
 - Exposes `/api/runs/{run_id}/report`
 - Exposes `/api/runs/{run_id}/report.md`
 
-- [ ] Write API tests with `httpx.AsyncClient`.
-- [ ] Implement Pydantic request/response schemas.
-- [ ] Implement SSE event stream from persisted events plus live subscriber queue.
-- [ ] Implement cancellation.
-- [ ] Commit: `feat: add fastapi service`
+- [x] Write API tests with `httpx.AsyncClient`.
+- [x] Implement Pydantic request/response schemas.
+- [x] Implement SSE event stream from persisted events plus live subscriber queue.
+- [x] Implement cancellation.
+- [x] Commit: `feat: add fastapi service`
 
 ### Task 8: Frontend foundation
 
@@ -201,10 +201,10 @@
 - Produces `api.getReport`
 - Produces `api.cancelRun`
 
-- [ ] Add React/Vite/TypeScript dependencies and scripts.
-- [ ] Implement typed API client.
-- [ ] Implement routes `/` and `/runs/:runId`.
-- [ ] Commit: `feat: add react frontend foundation`
+- [x] Add React/Vite/TypeScript dependencies and scripts.
+- [x] Implement typed API client.
+- [x] Implement routes `/` and `/runs/:runId`.
+- [x] Commit: `feat: add react frontend foundation`
 
 ### Task 9: Frontend run dashboard
 
@@ -222,11 +222,11 @@
 - Produces cancellation action.
 - Produces task/attempt/event rendering.
 
-- [ ] Implement form validation and submission.
-- [ ] Implement status/phase badges.
-- [ ] Implement live event stream and query invalidation.
-- [ ] Implement report and trace sections.
-- [ ] Commit: `feat: add live run dashboard`
+- [x] Implement form validation and submission.
+- [x] Implement status/phase badges.
+- [x] Implement live event stream and query invalidation.
+- [x] Implement report and trace sections.
+- [x] Commit: `feat: add live run dashboard`
 
 ### Task 10: Report viewer
 
@@ -238,9 +238,9 @@
 - Renders structured report.
 - Downloads Markdown from backend.
 
-- [ ] Render executive summary, sections, comparison table, conclusions, confidence, limitations, and sources.
-- [ ] Add Markdown download/copy actions.
-- [ ] Commit: `feat: add report viewer`
+- [x] Render executive summary, sections, comparison table, conclusions, confidence, limitations, and sources.
+- [x] Add Markdown download/copy actions.
+- [x] Commit: `feat: add report viewer`
 
 ### Task 11: Frontend tests
 
@@ -250,11 +250,11 @@
 - Create: `frontend/src/test/RunDashboard.test.tsx`
 - Create: `frontend/vitest.config.ts`
 
-- [ ] Test run creation form.
-- [ ] Test dashboard rendering.
-- [ ] Test SSE refresh.
-- [ ] Test report viewer.
-- [ ] Commit: `test: add frontend coverage`
+- [x] Test run creation form.
+- [x] Test dashboard rendering.
+- [x] Test SSE refresh.
+- [x] Test report viewer.
+- [x] Commit: `test: add frontend coverage`
 
 ### Task 12: CI and documentation
 
@@ -263,23 +263,23 @@
 - Modify: `README.md`
 - Modify: `pyproject.toml`
 
-- [ ] Add backend dependencies: `fastapi`, `uvicorn`, `sqlalchemy`, `aiosqlite`, `httpx`.
-- [ ] Add frontend scripts: `typecheck`, `test`, `build`.
-- [ ] Add CI frontend job.
-- [ ] Document local setup and API surface.
-- [ ] Commit: `ci: validate fullstack application`
+- [x] Add backend dependencies: `fastapi`, `uvicorn`, `sqlalchemy`, `aiosqlite`, `httpx`.
+- [x] Add frontend scripts: `typecheck`, `test`, `build`.
+- [x] Add CI frontend job.
+- [x] Document local setup and API surface.
+- [x] Commit: `ci: validate fullstack application`
 
 ### Task 13: End-to-end verification
 
 **Files:**
 - Create: `scripts/dev.sh`
 
-- [ ] Start backend and frontend.
-- [ ] Create a run through the UI.
-- [ ] Verify SSE progress.
-- [ ] Verify final report.
-- [ ] Verify cancellation endpoint.
-- [ ] Run all checks:
+- [x] Start backend and frontend.
+- [x] Create a run through the UI.
+- [x] Verify SSE progress.
+- [x] Verify final report.
+- [x] Verify cancellation endpoint.
+- [x] Run all checks:
 
 ```bash
 .venv/bin/ruff format --check .
@@ -288,7 +288,7 @@
 cd frontend && npm run typecheck && npm run test -- --run && npm run build
 ```
 
-- [ ] Commit: `test: verify fullstack workflow`
+- [x] Commit: `test: verify fullstack workflow`
 
 ### Task 14: Pull request
 
