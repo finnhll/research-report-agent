@@ -295,4 +295,6 @@ cd frontend && npm run typecheck && npm run test -- --run && npm run build
 - [x] Push `feat/fullstack-agent-platform`.
 - [x] Open PR into `main`.
 - [x] Confirm CI passes.
-- [ ] Provide browser and API verification summary.
+- [x] Provide browser and API verification summary.
+
+Browser run `run_6535c7b8a76a4343` reached `complete`, displayed three completed tasks, three worker attempts, the SSE event trace, the guardrail-approved report, and its source appendix. `/health` returned `{"status":"ok"}`, the Markdown endpoint returned the rendered report, and the browser console contained no errors or warnings.
