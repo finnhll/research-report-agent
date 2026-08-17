@@ -393,7 +393,7 @@ class Orchestrator:
             run_id,
             task.task_id,
         )
-        attempt_id = f"{task.task_id}_attempt_{attempt_number:03d}"
+        attempt_id = f"{run_id}_{task.task_id}_attempt_{attempt_number:03d}"
         await self.database.tasks.set_state(run_id, task.task_id, TaskState.RUNNING)
         await self._emit(
             run_id,

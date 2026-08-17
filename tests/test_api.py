@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+
 from httpx import ASGITransport, AsyncClient
 
 from research_report_agent.api import create_app
+from research_report_agent.orchestrator import Orchestrator
 from research_report_agent.storage import Database
+from research_report_agent.worker_runtime import WorkerRuntime
 
 
 async def make_client() -> tuple[AsyncClient, object]:
@@ -101,3 +105,36 @@ async def test_cancel_run() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Run is not active"
+
+
+async def test_cancel_active_run_through_http() -> None:
+    class SlowWorkerRuntime(WorkerRuntime):
+        async def execute_attempt(self, request, *, cancel_event=None):  # type: ignore[no-untyped-def]
+            await asyncio.sleep(30)
+            raise AssertionError("Slow worker should be cancelled")
+
+    database = Database.in_memory()
+    await database.create_schema()
+    orchestrator = Orchestrator(database, worker_runtime=SlowWorkerRuntime())
+    app = create_app(database=database, orchestrator=orchestrator)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = await client.post(
+            "/api/runs",
+            json={"goal": "Compare technologies", "dimensions": ["cost"]},
+        )
+        run_id = created.json()["run_id"]
+
+        for _ in range(100):
+            await asyncio.sleep(0.01)
+            tasks = await database.tasks.list(run_id)
+            if tasks and tasks[0].state.value == "running":
+                break
+        else:
+            raise AssertionError("Worker did not start")
+
+        response = await client.delete(f"/api/runs/{run_id}")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "cancelled"
+        assert (await database.tasks.list(run_id))[0].state.value == "cancelled"

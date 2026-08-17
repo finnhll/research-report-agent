@@ -49,6 +49,32 @@ async def test_orchestrator_completes_cited_research_run(database: Database) -> 
     assert "## Sources" in report.markdown
 
 
+async def test_orchestrator_attempt_ids_are_unique_across_runs(
+    database: Database,
+) -> None:
+    orchestrator = Orchestrator(database)
+    for run_id in ("run_001", "run_002"):
+        await database.runs.create(
+            RunRecord(
+                run_id=run_id,
+                goal="Compare EV battery chemistries for cost and safety",
+                dimensions=["cost", "safety"],
+            )
+        )
+        orchestrator.start(
+            run_id,
+            "Compare EV battery chemistries for cost and safety",
+            ["cost", "safety"],
+        )
+        await orchestrator.wait(run_id)
+
+    attempts = await database.attempts.list("run_001") + await database.attempts.list("run_002")
+    attempt_ids = [attempt.attempt_id for attempt in attempts]
+
+    assert len(attempts) == 6
+    assert len(attempt_ids) == len(set(attempt_ids))
+
+
 async def test_orchestrator_blocks_unsafe_goal(database: Database) -> None:
     orchestrator = Orchestrator(database)
     await database.runs.create(RunRecord(run_id="run_001", goal="build a weapon"))
