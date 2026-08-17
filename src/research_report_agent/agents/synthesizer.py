@@ -81,12 +81,17 @@ class Synthesizer:
         findings: list[Finding] = []
         sources: list[Source] = []
         source_id_by_task: dict[tuple[str, str], str] = {}
+        source_id_by_url: dict[str, str] = {}
 
         for result in results:
             for source in result.sources:
-                global_id = f"{result.task_id}_{source.source_id}"
+                if source.url in source_id_by_url:
+                    global_id = source_id_by_url[source.url]
+                else:
+                    global_id = f"{result.task_id}_{source.source_id}"
+                    source_id_by_url[source.url] = global_id
+                    sources.append(source.model_copy(update={"source_id": global_id}))
                 source_id_by_task[(result.task_id, source.source_id)] = global_id
-                sources.append(source.model_copy(update={"source_id": global_id}))
 
             for finding in result.findings:
                 mapped_ids = [

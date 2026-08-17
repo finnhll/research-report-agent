@@ -128,3 +128,14 @@ def test_synthesizer_remaps_and_preserves_citations() -> None:
     assert document.markdown.startswith("#")
     assert document.structured["sources"]
     assert document.structured["citation_map"]
+
+
+def test_synthesizer_deduplicates_sources_across_workers() -> None:
+    document = Synthesizer().synthesize(
+        run_id="run_001",
+        goal="Compare technologies",
+        results=[worker_result(), worker_result("task_002")],
+    )
+
+    urls = [source["url"] for source in document.structured["sources"]]
+    assert len(urls) == len(set(urls))

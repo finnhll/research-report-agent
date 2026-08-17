@@ -4,7 +4,7 @@ A Python + LangGraph multi-agent system that turns a broad research question int
 
 ## Status
 
-**Design phase.** The authoritative architecture is available in [`docs/spec/design.md`](docs/spec/design.md). The implementation will follow the milestones defined in the specification.
+**Fullstack MVP.** The repository contains a Python/LangGraph orchestrator-worker runtime, FastAPI service, SQLite persistence, and React dashboard.
 
 ## What it will do
 
@@ -22,6 +22,8 @@ the system will:
 6. Retry, revise, or re-plan within strict limits.
 7. Synthesize a cited Markdown report.
 8. Apply a final-output guardrail before delivery.
+9. Stream live progress to the browser.
+10. Display and download the cited Markdown report.
 
 ## Architecture
 
@@ -48,6 +50,11 @@ See the full design, contracts, retry policy, guardrail taxonomy, and acceptance
 - Python 3.11+
 - LangGraph
 - Pydantic
+- FastAPI
+- SQLAlchemy
+- React
+- TypeScript
+- Vite
 - asyncio
 - pytest
 - Ruff
@@ -58,7 +65,50 @@ See the full design, contracts, retry policy, guardrail taxonomy, and acceptance
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[dev]"
+cd frontend
+npm install
 ```
+
+## Run locally
+
+Start both services:
+
+```bash
+./scripts/dev.sh
+```
+
+- Frontend: http://127.0.0.1:5173
+- Backend API: http://127.0.0.1:8000
+- API docs: http://127.0.0.1:8000/docs
+
+You can also run the services separately:
+
+```bash
+.venv/bin/python -m uvicorn research_report_agent.main:app --host 127.0.0.1 --port 8000
+```
+
+```bash
+cd frontend
+npm run dev
+```
+
+By default, the runtime uses deterministic local agents and a local evidence catalog. No model provider credential is required for the MVP smoke path.
+
+## API surface
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/runs` | Create and start a research run |
+| `GET` | `/api/runs` | List runs |
+| `GET` | `/api/runs/{run_id}` | Get run state |
+| `DELETE` | `/api/runs/{run_id}` | Cancel an active run |
+| `GET` | `/api/runs/{run_id}/tasks` | List planned tasks |
+| `GET` | `/api/runs/{run_id}/attempts` | List immutable worker attempts |
+| `GET` | `/api/runs/{run_id}/events` | Get event history |
+| `GET` | `/api/runs/{run_id}/stream` | Live SSE progress stream |
+| `GET` | `/api/runs/{run_id}/report` | Get structured report |
+| `GET` | `/api/runs/{run_id}/report.md` | Download Markdown |
+| `GET` | `/health` | Health check |
 
 ## Quality checks
 
@@ -66,6 +116,10 @@ python -m pip install -e ".[dev]"
 ruff format --check .
 ruff check .
 pytest
+cd frontend
+npm run typecheck
+npm run test -- --run
+npm run build
 ```
 
 The same checks run in GitHub Actions on every pull request.
