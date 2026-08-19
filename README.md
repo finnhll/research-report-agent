@@ -4,7 +4,7 @@ A Python + LangGraph multi-agent system that turns a broad research question int
 
 ## Status
 
-**Fullstack MVP.** The repository contains a Python/LangGraph orchestrator-worker runtime, FastAPI service, SQLite persistence, and React dashboard.
+**Fullstack MVP, LLM-backed.** The repository contains a Python/LangGraph orchestrator-worker runtime, FastAPI service, SQLite persistence, and React dashboard. The planner, worker, critic, guardrail, and synthesizer agents all call a real model — see [`docs/plans/2026-08-20-real-llm-rebuild.md`](docs/plans/2026-08-20-real-llm-rebuild.md) for why and what changed.
 
 ## What it will do
 
@@ -92,7 +92,11 @@ cd frontend
 npm run dev
 ```
 
-By default, the runtime uses deterministic local agents and a local evidence catalog. No model provider credential is required for the MVP smoke path.
+The agents need a model API key before a run can start — set it once via
+`OPENAI_API_KEY` / `AGENT_MODEL` / `OPENAI_BASE_URL` (see [`.env.example`](.env.example)),
+or click **⚙ Model API** in the running dashboard, which saves it server-side to a
+gitignored `model-config.json` (works with any OpenAI-compatible endpoint via Base URL).
+`web_search` itself needs no key — it uses DuckDuckGo's keyless HTML endpoint.
 
 ## API surface
 
@@ -108,6 +112,9 @@ By default, the runtime uses deterministic local agents and a local evidence cat
 | `GET` | `/api/runs/{run_id}/stream` | Live SSE progress stream |
 | `GET` | `/api/runs/{run_id}/report` | Get structured report |
 | `GET` | `/api/runs/{run_id}/report.md` | Download Markdown |
+| `GET` | `/api/model-config` | Get the current model settings (key masked) |
+| `POST` | `/api/model-config` | Save model/base URL/API key |
+| `POST` | `/api/model-config/test` | Test the configured model connection |
 | `GET` | `/health` | Health check |
 
 ## Quality checks
@@ -138,6 +145,7 @@ The same checks run in GitHub Actions on every pull request.
 
 - [Design specification](docs/spec/design.md)
 - [Repository bootstrap plan](docs/plans/2026-08-16-repository-bootstrap.md)
+- [Real LLM rebuild](docs/plans/2026-08-20-real-llm-rebuild.md)
 - [Contributing guide](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

@@ -1,14 +1,55 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from research_report_agent.runtime_contracts import ToolRequest
 from research_report_agent.tools import ToolExecutor
 
+_SEARCH_HTML = """
+<div class="results">
+  <div class="result">
+    <h2 class="result__title">
+      <a class="result__a"
+         href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpage1&rut=abc"
+         >Example Page 1</a>
+    </h2>
+    <a class="result__snippet" href="#">Snippet about page one.</a>
+  </div>
+  <div class="result">
+    <h2 class="result__title">
+      <a class="result__a" href="https://example.com/page2">Example Page 2</a>
+    </h2>
+    <a class="result__snippet" href="#">Snippet about page two.</a>
+  </div>
+</div>
+"""
+
+_PAGE_HTML = (
+    "<html><head><title>Test Page</title></head>"
+    "<body><script>evil()</script><p>Real content here.</p></body></html>"
+)
+
+
+def _handler(request: httpx.Request) -> httpx.Response:
+    url = str(request.url)
+    html_headers = {"content-type": "text/html; charset=utf-8"}
+    if "html.duckduckgo.com" in url:
+        return httpx.Response(200, text=_SEARCH_HTML)
+    if url == "http://1.1.1.1/redirect":
+        return httpx.Response(302, headers={"location": "http://1.1.1.1/final"})
+    if url == "http://1.1.1.1/private-redirect":
+        return httpx.Response(302, headers={"location": "http://127.0.0.1/secret"})
+    if url in {"http://1.1.1.1/page", "http://1.1.1.1/final"}:
+        return httpx.Response(200, text=_PAGE_HTML, headers=html_headers)
+    if url == "http://1.1.1.1/not-found":
+        return httpx.Response(404)
+    return httpx.Response(500)
+
 
 @pytest.fixture
 def executor() -> ToolExecutor:
-    return ToolExecutor()
+    return ToolExecutor(transport=httpx.MockTransport(_handler))
 
 
 def request(executor: ToolExecutor, tool: str, payload: dict[str, object]) -> ToolRequest:
@@ -20,14 +61,13 @@ def request(executor: ToolExecutor, tool: str, payload: dict[str, object]) -> To
     )
 
 
-async def test_web_search_returns_source_metadata(executor: ToolExecutor) -> None:
-    result = await executor.execute(
-        request(executor, "web_search", {"query": "EV battery cost safety"})
-    )
+async def test_web_search_parses_and_unwraps_results(executor: ToolExecutor) -> None:
+    result = await executor.execute(request(executor, "web_search", {"query": "example"}))
 
     assert result.status.value == "success"
-    assert result.output["results"]
-    assert all("url" in item for item in result.output["results"])
+    urls = [item["url"] for item in result.output["results"]]
+    assert "https://example.com/page1" in urls
+    assert "https://example.com/page2" in urls
 
 
 async def test_web_search_requires_query(executor: ToolExecutor) -> None:
@@ -46,13 +86,39 @@ async def test_fetch_page_rejects_private_network(executor: ToolExecutor) -> Non
     assert "non-public address" in result.error
 
 
-async def test_fetch_page_returns_local_catalog_document(executor: ToolExecutor) -> None:
+async def test_fetch_page_strips_scripts_and_returns_text(executor: ToolExecutor) -> None:
+    result = await executor.execute(request(executor, "fetch_page", {"url": "http://1.1.1.1/page"}))
+
+    assert result.status.value == "success"
+    assert result.output["title"] == "Test Page"
+    assert "evil()" not in result.output["content"]
+    assert "Real content here." in result.output["content"]
+
+
+async def test_fetch_page_follows_and_revalidates_redirects(executor: ToolExecutor) -> None:
     result = await executor.execute(
-        request(executor, "fetch_page", {"url": "https://example.com/ev-battery-overview"})
+        request(executor, "fetch_page", {"url": "http://1.1.1.1/redirect"})
     )
 
     assert result.status.value == "success"
-    assert result.output["title"] == "EV Battery Chemistry Overview"
+    assert result.output["url"] == "http://1.1.1.1/final"
+
+
+async def test_fetch_page_blocks_redirect_to_private_network(executor: ToolExecutor) -> None:
+    result = await executor.execute(
+        request(executor, "fetch_page", {"url": "http://1.1.1.1/private-redirect"})
+    )
+
+    assert result.status.value == "blocked"
+
+
+async def test_fetch_page_reports_http_errors(executor: ToolExecutor) -> None:
+    result = await executor.execute(
+        request(executor, "fetch_page", {"url": "http://1.1.1.1/not-found"})
+    )
+
+    assert result.status.value == "error"
+    assert "404" in result.error
 
 
 async def test_calculator_evaluates_without_exec(executor: ToolExecutor) -> None:

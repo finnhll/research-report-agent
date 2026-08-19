@@ -10,8 +10,10 @@ wheels/
 # Environments
 .env
 .env.*
+!.env.example
 .venv/
 venv/
+model-config.json
 
 # Testing and coverage
 .pytest_cache/

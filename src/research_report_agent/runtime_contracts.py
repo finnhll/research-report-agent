@@ -100,7 +100,7 @@ class RunBudget(StrictRuntimeModel):
     max_parallel_workers: int = Field(default=3, gt=0)
     max_reasoning_steps: int = Field(default=10, gt=0)
     max_tool_calls_per_attempt: int = Field(default=6, gt=0)
-    attempt_timeout_seconds: float = Field(default=10, gt=0)
+    attempt_timeout_seconds: float = Field(default=90, gt=0)
     max_retries_per_task: int = Field(default=1, ge=0)
     max_replans: int = Field(default=1, ge=0)
 

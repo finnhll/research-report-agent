@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -18,6 +20,7 @@ from research_report_agent.contracts import (
     WorkerResult,
     WorkerStatus,
 )
+from research_report_agent.llm import LLMClient
 from research_report_agent.runtime_contracts import (
     AgentEvent,
     AttemptKind,
@@ -51,22 +54,32 @@ class SupervisorState(TypedDict, total=False):
     report: ReportDocument
 
 
+@dataclass
+class _RunAgents:
+    """The LLM-backed agent instances used by exactly one run."""
+
+    worker: WorkerRuntime
+    planner: Planner
+    critic: Critic
+    intake_guardrail: IntakeGuardrail
+    final_guardrail: FinalGuardrail
+    synthesizer: Synthesizer
+
+
 class Orchestrator:
     """Own run transitions, scheduling, persistence, and bounded worker dispatch."""
 
     def __init__(
         self,
         database: Database,
+        llm_factory: Callable[[], LLMClient],
         *,
         worker_runtime: WorkerRuntime | None = None,
     ) -> None:
         self.database = database
-        self.worker = worker_runtime or WorkerRuntime()
-        self.planner = Planner()
-        self.critic = Critic()
-        self.intake_guardrail = IntakeGuardrail()
-        self.final_guardrail = FinalGuardrail()
-        self.synthesizer = Synthesizer()
+        self._llm_factory = llm_factory
+        self._injected_worker = worker_runtime
+        self._agents: dict[str, _RunAgents] = {}
 
         self._background_tasks: dict[str, asyncio.Task[None]] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
@@ -108,6 +121,15 @@ class Orchestrator:
 
         if run_id in self._background_tasks:
             return
+        llm = self._llm_factory()
+        self._agents[run_id] = _RunAgents(
+            worker=self._injected_worker or WorkerRuntime(llm),
+            planner=Planner(llm),
+            critic=Critic(llm),
+            intake_guardrail=IntakeGuardrail(llm),
+            final_guardrail=FinalGuardrail(llm),
+            synthesizer=Synthesizer(llm),
+        )
         self._cancel_events[run_id] = asyncio.Event()
         self._event_counters[run_id] = 0
         self._usage[run_id] = RunUsage()
@@ -162,7 +184,7 @@ class Orchestrator:
     async def _node_intake(self, state: SupervisorState) -> dict[str, Any]:
         run_id = state["run_id"]
         await self._set_phase(run_id, RunPhase.INTAKE_GUARDRAIL)
-        review = self.intake_guardrail.review(state["goal"])
+        review = await self._agents[run_id].intake_guardrail.review(run_id, state["goal"])
         await self._emit(
             run_id,
             "intake_guardrail.completed",
@@ -184,7 +206,9 @@ class Orchestrator:
     async def _node_plan(self, state: SupervisorState) -> dict[str, Any]:
         run_id = state["run_id"]
         await self._set_phase(run_id, RunPhase.PLANNING)
-        plan = self.planner.create_plan(state["goal"], state.get("dimensions", []))
+        plan = await self._agents[run_id].planner.create_plan(
+            state["goal"], state.get("dimensions", [])
+        )
         await self.database.tasks.replace(run_id, plan.plan_id, 1, plan.tasks)
         await self._emit(
             run_id,
@@ -215,7 +239,7 @@ class Orchestrator:
             )
             return {"route": "end"}
 
-        review = self.critic.review(state.get("results", []))
+        review = await self._agents[run_id].critic.review(run_id, state.get("results", []))
         await self._emit(
             run_id,
             "review.completed",
@@ -236,7 +260,7 @@ class Orchestrator:
     async def _node_synthesize(self, state: SupervisorState) -> dict[str, Any]:
         run_id = state["run_id"]
         await self._set_phase(run_id, RunPhase.SYNTHESIZING)
-        report = self.synthesizer.synthesize(
+        report = await self._agents[run_id].synthesizer.synthesize(
             run_id=run_id,
             goal=state["goal"],
             results=state.get("results", []),
@@ -253,7 +277,7 @@ class Orchestrator:
         run_id = state["run_id"]
         report = state["report"]
         await self._set_phase(run_id, RunPhase.FINAL_GUARDRAIL)
-        review = self.final_guardrail.review_markdown(report.markdown)
+        review = await self._agents[run_id].final_guardrail.review_markdown(run_id, report.markdown)
 
         if review.verdict.value == "revise":
             report = report.model_copy(
@@ -263,7 +287,9 @@ class Orchestrator:
                     "financial, or investment advice.\n"
                 }
             )
-            review = self.final_guardrail.review_markdown(report.markdown)
+            review = await self._agents[run_id].final_guardrail.review_markdown(
+                run_id, report.markdown
+            )
 
         await self._emit(
             run_id,
@@ -339,7 +365,7 @@ class Orchestrator:
                 contexts[task.task_id] = result.produced_context
 
         ordered = [results[task.task_id] for task in plan.tasks if task.task_id in results]
-        review = self.critic.review(ordered)
+        review = await self._agents[run_id].critic.review(run_id, ordered)
         if review.overall_verdict.value == "fail":
             return ordered
         return await self._run_critic_revisions(
@@ -418,10 +444,10 @@ class Orchestrator:
         )
 
         started_at = utc_now()
-        tool_calls_before = self.worker.tools.call_count
+        tool_calls_before = self._agents[run_id].worker.tools.call_count
         try:
             result = await asyncio.wait_for(
-                self.worker.execute_attempt(
+                self._agents[run_id].worker.execute_attempt(
                     request,
                     cancel_event=self._cancel_events[run_id],
                 ),
@@ -467,7 +493,7 @@ class Orchestrator:
         self._increment_usage(
             run_id,
             llm_calls=1,
-            tool_calls=self.worker.tools.call_count - tool_calls_before,
+            tool_calls=self._agents[run_id].worker.tools.call_count - tool_calls_before,
         )
         await self._emit(
             run_id,
@@ -539,6 +565,7 @@ class Orchestrator:
         if run_id in self._finished:
             return
         self._finished.add(run_id)
+        self._agents.pop(run_id, None)
         usage = self._usage.get(run_id, RunUsage())
         await self.database.runs.set_usage(run_id, usage)
         await self.database.runs.set_terminal(run_id, status, error=error)

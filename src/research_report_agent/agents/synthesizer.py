@@ -1,6 +1,15 @@
-"""Deterministic synthesizer agent."""
+"""LLM-backed synthesizer agent.
+
+Source de-duplication and citation-map construction stay deterministic, code-owned
+logic — that is data plumbing that must be correct by construction. Only the report's
+prose (executive summary, section text, comparison table, conclusions) is written by
+the model, and only from the accepted findings/sources it is handed — see
+``docs/spec/design.md`` §6.5 ("must not invent new facts").
+"""
 
 from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from research_report_agent.contracts import (
     Finding,
@@ -10,13 +19,65 @@ from research_report_agent.contracts import (
     Source,
     WorkerResult,
 )
+from research_report_agent.llm import LLMClient
 from research_report_agent.runtime_contracts import ReportDocument
+
+
+class _DraftConclusion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conclusion: str = Field(min_length=1)
+    confidence: float = Field(ge=0, le=1)
+    basis: list[str] = Field(min_length=1)
+
+
+class _DraftSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    heading: str = Field(min_length=1)
+    markdown: str = Field(min_length=1)
+
+
+class _ReportDraft(BaseModel):
+    """What the model writes; the source list and citation map are built in code."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1)
+    executive_summary: str = Field(min_length=1)
+    sections: list[_DraftSection] = Field(min_length=1)
+    comparison_table_markdown: str | None = None
+    conclusions: list[_DraftConclusion] = Field(min_length=1)
+    limitations: list[str] = Field(default_factory=list)
+
+
+_SYSTEM = """You are the synthesizer for a multi-agent research system. Write a \
+coherent, cited final report from ONLY the accepted findings and sources given to you.
+
+Rules:
+- Use only the provided findings and sources; never invent new facts or citations.
+- Every conclusion's "basis" must list finding_id values taken from the provided \
+findings.
+- Explain unresolved contradictions and uncertainty; separate evidence from opinion.
+- Include a comparison table when the goal is comparative, else set it to null.
+- Frame conclusions as evidence-based tradeoffs, never as personalized purchasing, \
+medical, legal, financial, or safety advice.
+- Cite sources inline using the bracketed labels given to you, e.g. "...as shown [1]."
+
+Respond with JSON: {"title": "...", "executive_summary": "...", \
+"sections": [{"heading": "...", "markdown": "..."}], \
+"comparison_table_markdown": "... or null", \
+"conclusions": [{"conclusion": "...", "confidence": 0.0, "basis": ["finding_id"]}], \
+"limitations": ["..."]}"""
 
 
 class Synthesizer:
     """Combine accepted worker findings into a cited report."""
 
-    def synthesize(
+    def __init__(self, llm: LLMClient) -> None:
+        self.llm = llm
+
+    async def synthesize(
         self,
         *,
         run_id: str,
@@ -27,40 +88,36 @@ class Synthesizer:
         if not findings or not sources:
             raise ValueError("Cannot synthesize a report without accepted evidence")
 
+        citation_map = {f"[{i}]": source.source_id for i, source in enumerate(sources, start=1)}
+        draft = await self.llm.complete_structured(
+            system=_SYSTEM,
+            user=self._prompt(goal, findings, sources, citation_map),
+            schema=_ReportDraft,
+        )
+
         accepted_ids = [finding.finding_id for finding in findings]
-        citation_map = {
-            f"[{index}]": source.source_id for index, source in enumerate(sources, start=1)
-        }
-        confidence = sum(finding.confidence for finding in findings) / len(findings)
-        limitations = self._limitations(results)
+        accepted_id_set = set(accepted_ids)
+        conclusions = [
+            ReportConclusion(
+                conclusion=item.conclusion,
+                confidence=item.confidence,
+                basis=[fid for fid in item.basis if fid in accepted_id_set] or accepted_ids[:1],
+            )
+            for item in draft.conclusions
+        ]
+
         report = ResearchReport(
             report_id=f"{run_id}_report_001",
             run_id=run_id,
-            title=self._title(goal),
-            executive_summary=(
-                "This report compares the researched options using the accepted evidence below. "
-                "Conclusions are evidence-scoped and should not be interpreted as "
-                "professional advice."
-            ),
-            sections=self._sections(results),
-            comparison_table_markdown=(
-                "| Option | Evidence summary | Confidence |\n|---|---|---:|\n"
-                + "\n".join(
-                    f"| Evidence {index} | {finding.evidence} | {finding.confidence:.2f} |"
-                    for index, finding in enumerate(findings, start=1)
-                )
-            ),
-            conclusions=[
-                ReportConclusion(
-                    conclusion=(
-                        "The evidence supports comparing options by their documented tradeoffs "
-                        "rather than selecting a universally superior option."
-                    ),
-                    confidence=confidence,
-                    basis=accepted_ids,
-                )
+            title=draft.title,
+            executive_summary=draft.executive_summary,
+            sections=[
+                ReportSection(heading=section.heading, markdown=section.markdown)
+                for section in draft.sections
             ],
-            limitations=limitations,
+            comparison_table_markdown=draft.comparison_table_markdown,
+            conclusions=conclusions,
+            limitations=draft.limitations,
             accepted_finding_ids=accepted_ids,
             sources=sources,
             citation_map=citation_map,
@@ -72,6 +129,28 @@ class Synthesizer:
             markdown=self._markdown(report),
             structured=report.model_dump(mode="json"),
             guardrail_verdict="allow",
+        )
+
+    def _prompt(
+        self,
+        goal: str,
+        findings: list[Finding],
+        sources: list[Source],
+        citation_map: dict[str, str],
+    ) -> str:
+        source_lines = "\n".join(
+            f"{label}: {source.title} — {source.publisher} ({source.url})"
+            for label, source in zip(citation_map.keys(), sources, strict=True)
+        )
+        finding_lines = "\n".join(
+            f"- [{finding.finding_id}] {finding.claim} — evidence: {finding.evidence} "
+            f"(sources: {finding.source_ids}, confidence: {finding.confidence:.2f})"
+            for finding in findings
+        )
+        return (
+            f"Research goal: {goal}\n\n"
+            f"Sources:\n{source_lines}\n\n"
+            f"Accepted findings:\n{finding_lines}"
         )
 
     def _merge_evidence(
@@ -108,24 +187,6 @@ class Synthesizer:
                 )
 
         return findings, sources
-
-    def _sections(self, results: list[WorkerResult]) -> list[ReportSection]:
-        return [
-            ReportSection(
-                heading=result.task_id.replace("_", " ").title(),
-                markdown=f"{result.summary}\n\n" + "\n".join(item for item in result.gaps),
-            )
-            for result in results
-        ]
-
-    def _limitations(self, results: list[WorkerResult]) -> list[str]:
-        limitations = [limitation for result in results for limitation in result.gaps]
-        limitations.append("This MVP uses deterministic local evidence for reproducible testing.")
-        return limitations
-
-    def _title(self, goal: str) -> str:
-        clean = " ".join(goal.split())
-        return clean[:120].capitalize() if clean else "Research Report"
 
     def _markdown(self, report: ResearchReport) -> str:
         lines = [f"# {report.title}", "", report.executive_summary, ""]

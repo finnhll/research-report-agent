@@ -1,3 +1,10 @@
+export interface ModelConfigInfo {
+  model: string;
+  base_url: string | null;
+  api_key_masked: string | null;
+  key_source: "file" | "env" | null;
+}
+
 export type RunStatus =
   | "running"
   | "complete"

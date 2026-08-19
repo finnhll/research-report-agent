@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from research_report_agent.config import ModelConfigInfo, get_config_info, load_config, save_config
+from research_report_agent.llm import LLMClient, LLMError
 from research_report_agent.orchestrator import Orchestrator
 from research_report_agent.runtime_contracts import RunRecord, RunStatus
 from research_report_agent.storage import Database
@@ -32,6 +34,14 @@ class EventListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     events: list[dict[str, Any]]
+
+
+class ModelConfigUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str | None = Field(default=None, min_length=1)
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 def get_database(request: Request) -> Database:
@@ -55,7 +65,7 @@ def create_app(
         database_path.parent.mkdir(parents=True, exist_ok=True)
         database = Database.sqlite(database_path)
 
-    runtime_orchestrator = orchestrator or Orchestrator(database)
+    runtime_orchestrator = orchestrator or Orchestrator(database, lambda: LLMClient(load_config()))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -93,6 +103,31 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/api/model-config", response_model=ModelConfigInfo)
+    async def get_model_config() -> ModelConfigInfo:
+        return get_config_info()
+
+    @app.post("/api/model-config", response_model=ModelConfigInfo)
+    async def update_model_config(request: ModelConfigUpdateRequest) -> ModelConfigInfo:
+        if request.base_url and not request.base_url.startswith(("http://", "https://")):
+            raise HTTPException(
+                status_code=400,
+                detail="base_url must start with http:// or https://",
+            )
+        save_config(model=request.model, base_url=request.base_url, api_key=request.api_key)
+        return get_config_info()
+
+    @app.post("/api/model-config/test")
+    async def test_model_config() -> dict[str, Any]:
+        config = load_config()
+        if not config.api_key:
+            return {"ok": False, "error": "No API key configured"}
+        try:
+            model_ids = await LLMClient(config).list_model_ids()
+        except Exception as exc:  # Connectivity checks must fail closed, not crash.
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "model_found": config.model in model_ids, "model": config.model}
+
     @app.post(
         "/api/runs",
         response_model=RunRecord,
@@ -109,7 +144,11 @@ def create_app(
             dimensions=request.dimensions,
         )
         await db.runs.create(run)
-        app.state.orchestrator.start(run_id, request.goal, request.dimensions)
+        try:
+            app.state.orchestrator.start(run_id, request.goal, request.dimensions)
+        except LLMError as exc:
+            await db.runs.set_terminal(run_id, RunStatus.FAILED, error=str(exc))
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return run
 
     @app.get("/api/runs", response_model=list[RunRecord])

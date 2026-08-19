@@ -1,71 +1,41 @@
-"""Quality critic agent."""
+"""LLM-backed quality critic agent."""
 
 from __future__ import annotations
 
-from research_report_agent.contracts import (
-    CriticReview,
-    CriticTaskReview,
-    CriticVerdict,
-    FollowUpTask,
-    WorkerResult,
-)
+from research_report_agent.contracts import CriticReview, WorkerResult
+from research_report_agent.llm import LLMClient
+
+_SYSTEM = """You are the quality critic for a multi-agent research system. Review \
+worker research results for RESEARCH QUALITY only — coverage, evidence quality, \
+source quality, consistency, confidence, and comparability. You are not a safety \
+reviewer; leave safety judgments to the guardrail.
+
+For each task result, decide a verdict:
+- "accept": findings are relevant, sourced, and meet the task's success criteria.
+- "revise": findings are partial or weak; you MUST include a follow_up task asking a \
+narrower, bounded question (max_tool_calls <= 3) that closes the specific gap.
+- "replan" or "degrade": only for a task that cannot be salvaged with one follow-up.
+
+Set overall_verdict to "fail" only when there is truly no usable evidence in ANY task; \
+otherwise "accept" if every task_review accepts, else "revise".
+
+Respond with JSON matching the CriticReview schema: review_id, run_id, \
+overall_verdict, task_reviews (task_id, verdict, reason, and — only for "revise" \
+verdicts — follow_up: {task_id, parent_task_id, question, constraints, \
+max_tool_calls}), cross_task_issues, missing_dimensions, contradictions."""
 
 
 class Critic:
     """Review worker results and emit a structured graph action."""
 
-    def review(self, results: list[WorkerResult]) -> CriticReview:
-        reviews: list[CriticTaskReview] = []
-        has_evidence = any(result.findings and result.sources for result in results)
+    def __init__(self, llm: LLMClient) -> None:
+        self.llm = llm
 
-        for result in results:
-            acceptable = (
-                result.status.value == "completed"
-                and bool(result.findings)
-                and bool(result.sources)
-            )
-            if acceptable:
-                reviews.append(
-                    CriticTaskReview(
-                        task_id=result.task_id,
-                        verdict=CriticVerdict.ACCEPT,
-                        reason="The result has findings, sources, and meets its task boundary.",
-                    )
-                )
-                continue
-
-            reviews.append(
-                CriticTaskReview(
-                    task_id=result.task_id,
-                    verdict=CriticVerdict.REVISE,
-                    reason="The result is partial or lacks sufficient sourced findings.",
-                    follow_up=FollowUpTask(
-                        task_id=f"{result.task_id}_followup_001",
-                        parent_task_id=result.task_id,
-                        question="Normalize the evidence and address the reported gaps.",
-                        constraints=[
-                            "Do not introduce unsupported claims",
-                            "Preserve existing source IDs where possible",
-                            "Report unresolved gaps explicitly",
-                        ],
-                        max_tool_calls=3,
-                    ),
-                )
-            )
-
-        if not has_evidence:
-            overall = CriticVerdict.FAIL
-        elif all(review.verdict is CriticVerdict.ACCEPT for review in reviews):
-            overall = CriticVerdict.ACCEPT
-        else:
-            overall = CriticVerdict.REVISE
-
-        return CriticReview(
-            review_id="review_001",
-            run_id="run_pending",
-            overall_verdict=overall,
-            task_reviews=reviews,
+    async def review(self, run_id: str, results: list[WorkerResult]) -> CriticReview:
+        user = f"run_id: {run_id}\n\nWorker results:\n" + "\n\n".join(
+            result.model_dump_json(indent=2) for result in results
         )
+        return await self.llm.complete_structured(system=_SYSTEM, user=user, schema=CriticReview)
 
 
 __all__ = ["Critic"]

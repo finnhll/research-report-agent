@@ -352,6 +352,67 @@ dd {
   color: #68788d;
 }
 
+.controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #526173;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.settings-grid input {
+  border: 1px solid #c9d4e2;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font: inherit;
+  font-weight: 400;
+}
+
+.hint {
+  color: #66778c;
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.ok-note {
+  color: #137333;
+  font-size: 13px;
+}
+
+.test-ok {
+  color: #137333;
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(23, 32, 51, 0.25);
+  border-top-color: #172033;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 900px) {
   .app-shell {
     padding: 18px;

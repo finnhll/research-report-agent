@@ -1,4 +1,4 @@
-import type { EventRecord, Report, Run, TaskRecord, WorkerAttempt } from "./types";
+import type { EventRecord, ModelConfigInfo, Report, Run, TaskRecord, WorkerAttempt } from "./types";
 
 export const API_BASE =
   import.meta.env.VITE_API_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
@@ -45,6 +45,22 @@ export const api = {
   },
   getReport(runId: string): Promise<Report> {
     return request<Report>(`/api/runs/${runId}/report`);
+  },
+  getModelConfig(): Promise<ModelConfigInfo> {
+    return request<ModelConfigInfo>("/api/model-config");
+  },
+  saveModelConfig(update: {
+    model?: string;
+    base_url?: string;
+    api_key?: string;
+  }): Promise<ModelConfigInfo> {
+    return request<ModelConfigInfo>("/api/model-config", {
+      method: "POST",
+      body: JSON.stringify(update),
+    });
+  },
+  testModelConfig(): Promise<{ ok: boolean; error?: string; model_found?: boolean; model?: string }> {
+    return request("/api/model-config/test", { method: "POST" });
   },
 };
 
