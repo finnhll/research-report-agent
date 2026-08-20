@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { reportMarkdownUrl } from "../api";
 import type { Report } from "../types";
+import { ComparisonTable, Prose, renderInline } from "./Markdown";
 import SourceList from "./SourceList";
 
 export default function ReportViewer({ report }: { report: Report }) {
   const [copied, setCopied] = useState(false);
+  const citationLabels = new Set(report.structured.sources.map((_, index) => String(index + 1)));
 
   async function copyReport() {
     await navigator.clipboard.writeText(report.markdown);
@@ -13,8 +15,8 @@ export default function ReportViewer({ report }: { report: Report }) {
   }
 
   return (
-    <section className="panel report">
-      <div className="panel-heading">
+    <article className="report-card">
+      <header className="report-card-header">
         <h2>{report.title}</h2>
         <div className="button-row">
           <a
@@ -23,38 +25,59 @@ export default function ReportViewer({ report }: { report: Report }) {
             target="_blank"
             rel="noreferrer"
           >
-            Download Markdown
+            Download
           </a>
-          <button onClick={copyReport}>{copied ? "Copied" : "Copy report"}</button>
+          <button onClick={copyReport}>{copied ? "Copied" : "Copy"}</button>
         </div>
+      </header>
+
+      <div className="report-lead">
+        <Prose text={report.structured.executive_summary} citationLabels={citationLabels} />
       </div>
-      <p className="summary">{report.structured.executive_summary}</p>
+
       {report.structured.comparison_table_markdown ? (
-        <pre className="comparison">{report.structured.comparison_table_markdown}</pre>
+        <section className="report-section">
+          <h3>Comparison</h3>
+          <ComparisonTable markdown={report.structured.comparison_table_markdown} />
+        </section>
       ) : null}
+
       {report.structured.sections.map((section) => (
-        <article key={section.heading}>
+        <section className="report-section" key={section.heading}>
           <h3>{section.heading}</h3>
-          <p>{section.markdown}</p>
-        </article>
+          <Prose text={section.markdown} citationLabels={citationLabels} />
+        </section>
       ))}
-      <h3>Conclusions</h3>
-      <ul>
-        {report.structured.conclusions.map((conclusion) => (
-          <li key={conclusion.conclusion}>
-            {conclusion.conclusion}{" "}
-            <em>confidence {(conclusion.confidence * 100).toFixed(0)}%</em>
-          </li>
-        ))}
-      </ul>
-      <h3>Limitations</h3>
-      <ul>
-        {report.structured.limitations.map((limitation) => (
-          <li key={limitation}>{limitation}</li>
-        ))}
-      </ul>
-      <h3>Sources</h3>
-      <SourceList sources={report.structured.sources} />
-    </section>
+
+      <section className="report-section">
+        <h3>Conclusions</h3>
+        <ul className="conclusion-list">
+          {report.structured.conclusions.map((conclusion) => (
+            <li key={conclusion.conclusion}>
+              <span>{renderInline(conclusion.conclusion, citationLabels)}</span>
+              <span className="confidence-badge">
+                {(conclusion.confidence * 100).toFixed(0)}%
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {report.structured.limitations.length ? (
+        <section className="report-section">
+          <h3>Limitations</h3>
+          <ul className="limitation-list">
+            {report.structured.limitations.map((limitation) => (
+              <li key={limitation}>{limitation}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <section className="report-section">
+        <h3>Sources</h3>
+        <SourceList sources={report.structured.sources} />
+      </section>
+    </article>
   );
 }

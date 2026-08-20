@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import App from "../App";
 
@@ -24,21 +23,19 @@ function renderApp() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>
+      <App />
     </QueryClientProvider>,
   );
 }
 
 describe("App", () => {
-  it("renders the new run interface", async () => {
+  it("renders the chat composer and empty state", async () => {
     mocks.listRuns.mockResolvedValue([]);
     renderApp();
 
-    expect(await screen.findByText("Start research")).toBeInTheDocument();
+    expect(await screen.findByText(/ask a research question above/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/research goal/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /start run/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
   });
 
   it("submits a research goal with selected dimensions", async () => {
@@ -47,8 +44,11 @@ describe("App", () => {
     const user = userEvent.setup();
     renderApp();
 
-    await user.type(await screen.findByLabelText(/research goal/i), "Compare battery chemistries");
-    await user.click(screen.getByRole("button", { name: /start run/i }));
+    await user.type(
+      await screen.findByLabelText(/research goal/i),
+      "Compare battery chemistries",
+    );
+    await user.click(screen.getByRole("button", { name: /send/i }));
 
     await vi.waitFor(() =>
       expect(mocks.createRun).toHaveBeenCalledWith("Compare battery chemistries", [

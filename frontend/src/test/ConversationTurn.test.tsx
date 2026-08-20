@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import RunDashboard from "../components/RunDashboard";
+import ConversationTurn from "../components/ConversationTurn";
 import type { Report, Run, TaskRecord, WorkerAttempt } from "../types";
 
 const mocks = vi.hoisted(() => ({
@@ -29,7 +29,7 @@ const run: Run = {
     max_parallel_workers: 3,
     max_reasoning_steps: 10,
     max_tool_calls_per_attempt: 6,
-    attempt_timeout_seconds: 10,
+    attempt_timeout_seconds: 240,
     max_retries_per_task: 1,
     max_replans: 1,
   },
@@ -91,12 +91,10 @@ const report: Report = {
   title: "Battery chemistry comparison",
   markdown: "# Battery chemistry comparison",
   structured: {
-    executive_summary: "Evidence-based comparison of battery options.",
+    executive_summary: "Evidence-based comparison of battery options [1].",
     sections: [{ heading: "Cost", markdown: "Cost tradeoffs differ by chemistry." }],
-    comparison_table_markdown: "| Option | Evidence |",
-    conclusions: [
-      { conclusion: "Options involve tradeoffs", confidence: 0.75, basis: [] },
-    ],
+    comparison_table_markdown: "| Option | Evidence |\n|---|---|\n| LFP | Cheaper |",
+    conclusions: [{ conclusion: "Options involve tradeoffs", confidence: 0.75, basis: [] }],
     limitations: ["Local deterministic evidence"],
     sources: [
       {
@@ -115,23 +113,19 @@ const report: Report = {
   created_at: "2026-08-16T00:01:00Z",
 };
 
-function renderDashboard() {
+function renderTurn() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/runs/run_001"]}>
-        <Routes>
-          <Route path="/runs/:runId" element={<RunDashboard />} />
-        </Routes>
-      </MemoryRouter>
+      <ConversationTurn run={run} />
     </QueryClientProvider>,
   );
 }
 
-describe("RunDashboard", () => {
-  it("renders tasks, attempts, trace, and report", async () => {
+describe("ConversationTurn", () => {
+  it("renders the goal, the formatted report, and an expandable trace", async () => {
     mocks.getRun.mockResolvedValue(run);
     mocks.listTasks.mockResolvedValue([task]);
     mocks.listAttempts.mockResolvedValue([attempt]);
@@ -151,13 +145,18 @@ describe("RunDashboard", () => {
     });
     mocks.getReport.mockResolvedValue(report);
 
-    renderDashboard();
+    renderTurn();
 
     expect(await screen.findByText("Compare EV battery chemistries")).toBeInTheDocument();
+    expect(await screen.findByText("Battery chemistry comparison")).toBeInTheDocument();
+    expect(screen.getByText("Example source")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "[1]" })).toHaveAttribute("href", "#source-1");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /show research trace/i }));
+
     expect(await screen.findByText("Identify battery chemistries")).toBeInTheDocument();
     expect(await screen.findByText("Found three relevant sources.")).toBeInTheDocument();
-    expect(await screen.findByText("Battery chemistry comparison")).toBeInTheDocument();
     expect(screen.getByText("run.completed")).toBeInTheDocument();
-    expect(screen.getByText("Example source")).toBeInTheDocument();
   });
 });
