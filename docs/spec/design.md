@@ -1497,36 +1497,46 @@ The API never exposes raw model chain-of-thought or unredacted tool output.
 - React
 - TypeScript
 - Vite
-- React Router
 - TanStack Query
 - Native `EventSource`
 
-### 17.2 Pages
+No router: as of the 2026-08-20 chat redesign (below) this is a single page with no
+routes, so React Router was dropped as a dependency entirely.
 
-1. **New run**
-   - Research goal input
-   - Required dimensions
-   - Start button
-2. **Run list**
-   - Recent runs
-   - Status badges
-3. **Run dashboard**
-   - Live phase/status
-   - Task list
-   - Worker attempts
-   - Budgets
-   - Cancellation
-4. **Report viewer**
-   - Executive summary
-   - Sections
-   - Citations
-   - Limitations
-   - Source appendix
-5. **Trace viewer**
-   - Event timeline
-   - State transitions
-   - Worker history
-6. **Model API settings panel** (`⚙ Model API`, header-level, not a route)
+### 17.2 Single-page chat layout
+
+Redesigned 2026-08-20 from an earlier multi-page flow (a "New run" form that
+navigated to a separate `/runs/:id` dashboard route) to a single-page chat interface —
+submitting a goal no longer navigates anywhere; the result appears in place.
+
+1. **Composer** (`ChatComposer`, sticky at the top of the page)
+   - Auto-growing textarea; Enter to send, Shift+Enter for a newline
+   - Required-dimension toggle chips
+   - Send button; always available, independent of any other run's state
+2. **Conversation feed** (`ConversationTurn`, one per run, newest first, directly
+   below the composer)
+   - User bubble: the goal, dimension tags, relative timestamp
+   - Assistant bubble, while running: status/phase badge (friendly phase labels —
+     "Researching…", "Writing your report…" — mapped from `RunPhase`), a spinner,
+     compact per-task progress chips, and a "Stop" (cancel) action
+   - Assistant bubble, once terminal: the formatted report (see below) or an error/
+     blocked message
+   - Collapsed **"Show research trace"** toggle revealing the full task list, worker
+     attempts, and event timeline (`TaskCard`/`AttemptCard`/`EventTimeline`, unchanged)
+     for anyone who wants the full plan/attempt/event detail
+3. **Report card** (`ReportViewer`, rendered inline inside the assistant bubble, not
+   a separate page)
+   - Title, executive summary, comparison table rendered as a real HTML `<table>`
+     (parsed from the GFM pipe-table markdown — not a raw `<pre>` dump)
+   - Sections, conclusions (with a confidence badge), limitations, and a numbered
+     source appendix
+   - Inline `[1]`-style citations render as clickable links to the matching
+     numbered source (`Markdown.tsx` — a small hand-written, dependency-free
+     markdown-to-JSX renderer; deliberately never uses `dangerouslySetInnerHTML`
+     since this text is model-generated and may have absorbed untrusted web
+     content via tool calls, so it only ever renders through JSX text nodes,
+     which React escapes automatically)
+4. **Model API settings panel** (`⚙ Model API`, header-level toggle, not a route)
    - Provider picker (OpenAI / DeepSeek / Anthropic) — switching it auto-fills a
      suggested model and base URL from `/api/model-providers`
    - Model (free text with a per-provider `<datalist>` of suggestions)
