@@ -9,6 +9,8 @@ the model, and only from the accepted findings/sources it is handed — see
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from research_report_agent.contracts import (
@@ -21,6 +23,28 @@ from research_report_agent.contracts import (
 )
 from research_report_agent.llm import LLMClient
 from research_report_agent.runtime_contracts import ReportDocument
+
+
+def _strip_finding_id_leakage(text: str, finding_ids: list[str]) -> str:
+    """Remove any internal finding_id token that leaked into rendered prose.
+
+    finding_ids look like "task_002_finding_013" and are meant only for the JSON
+    "basis" field — never for prose. A model that ignores that instruction (observed
+    live: it copied the "(id: ...)" label straight into report text as if it were a
+    citation) must not be able to put an unresolvable token in front of a reader, so
+    this is enforced in code rather than trusted to the prompt alone.
+    """
+
+    if not finding_ids:
+        return text
+    pattern = re.compile(
+        r"[\[(]?\s*(?:id:\s*)?(?:" + "|".join(re.escape(fid) for fid in finding_ids) + r")\s*[\])]?"
+    )
+    cleaned = pattern.sub(" ", text)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"[ \t]+([.,;:])", r"\1", cleaned)
+    cleaned = cleaned.strip()
+    return cleaned or text
 
 
 class _DraftConclusion(BaseModel):
@@ -56,13 +80,18 @@ coherent, cited final report from ONLY the accepted findings and sources given t
 
 Rules:
 - Use only the provided findings and sources; never invent new facts or citations.
-- Every conclusion's "basis" must list finding_id values taken from the provided \
-findings.
+- Every conclusion's "basis" must list finding_id values (given as "id: ..." below) \
+taken from the provided findings — but finding_id values are internal bookkeeping \
+and must NEVER appear anywhere in the report prose (executive_summary, sections, \
+comparison table). They belong only in the JSON "basis" array.
+- The ONLY inline citation marker allowed in prose is one of the numbered source \
+labels from the Sources list below, e.g. "...as shown [1]." Never write a finding_id \
+like "task_002_finding_013" as a citation — it is not a citation, and a reader would \
+have no way to resolve it.
 - Explain unresolved contradictions and uncertainty; separate evidence from opinion.
 - Include a comparison table when the goal is comparative, else set it to null.
 - Frame conclusions as evidence-based tradeoffs, never as personalized purchasing, \
 medical, legal, financial, or safety advice.
-- Cite sources inline using the bracketed labels given to you, e.g. "...as shown [1]."
 
 Respond with JSON: {"title": "...", "executive_summary": "...", \
 "sections": [{"heading": "...", "markdown": "..."}], \
@@ -99,7 +128,7 @@ class Synthesizer:
         accepted_id_set = set(accepted_ids)
         conclusions = [
             ReportConclusion(
-                conclusion=item.conclusion,
+                conclusion=_strip_finding_id_leakage(item.conclusion, accepted_ids),
                 confidence=item.confidence,
                 basis=[fid for fid in item.basis if fid in accepted_id_set] or accepted_ids[:1],
             )
@@ -110,12 +139,19 @@ class Synthesizer:
             report_id=f"{run_id}_report_001",
             run_id=run_id,
             title=draft.title,
-            executive_summary=draft.executive_summary,
+            executive_summary=_strip_finding_id_leakage(draft.executive_summary, accepted_ids),
             sections=[
-                ReportSection(heading=section.heading, markdown=section.markdown)
+                ReportSection(
+                    heading=section.heading,
+                    markdown=_strip_finding_id_leakage(section.markdown, accepted_ids),
+                )
                 for section in draft.sections
             ],
-            comparison_table_markdown=draft.comparison_table_markdown,
+            comparison_table_markdown=(
+                _strip_finding_id_leakage(draft.comparison_table_markdown, accepted_ids)
+                if draft.comparison_table_markdown
+                else None
+            ),
             conclusions=conclusions,
             limitations=draft.limitations,
             accepted_finding_ids=accepted_ids,
@@ -143,7 +179,7 @@ class Synthesizer:
             for label, source in zip(citation_map.keys(), sources, strict=True)
         )
         finding_lines = "\n".join(
-            f"- [{finding.finding_id}] {finding.claim} — evidence: {finding.evidence} "
+            f"- (id: {finding.finding_id}) {finding.claim} — evidence: {finding.evidence} "
             f"(sources: {finding.source_ids}, confidence: {finding.confidence:.2f})"
             for finding in findings
         )

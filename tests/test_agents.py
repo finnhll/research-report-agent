@@ -207,6 +207,25 @@ async def test_synthesizer_remaps_and_preserves_citations() -> None:
     assert document.structured["conclusions"][0]["basis"] == accepted_ids[:1]
 
 
+async def test_synthesizer_strips_finding_id_leakage_from_prose() -> None:
+    result = worker_result()
+    leaked_id = "task_001_task_001_finding_001"  # the merged id for this fixture
+    draft = _draft(
+        executive_summary=f"LFP is cheaper [{leaked_id}], per the survey.",
+        sections=[{"heading": "Cost", "markdown": f"Details (id: {leaked_id}) follow."}],
+    )
+    llm = FakeLLMClient([draft])
+
+    document = await Synthesizer(llm).synthesize(
+        run_id="run_001", goal="Compare technologies", results=[result]
+    )
+
+    assert leaked_id not in document.markdown
+    assert leaked_id not in document.structured["executive_summary"]
+    assert leaked_id not in document.structured["sections"][0]["markdown"]
+    assert document.structured["executive_summary"] == "LFP is cheaper, per the survey."
+
+
 async def test_synthesizer_deduplicates_sources_across_workers() -> None:
     llm = FakeLLMClient([_draft()])
 
