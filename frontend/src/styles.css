@@ -440,6 +440,48 @@ dd {
   color: #1654ff;
 }
 
+.chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.chip-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip-add {
+  background: transparent;
+  border-style: dashed;
+}
+
+.dimension-hint {
+  align-self: center;
+  color: #77869c;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin-right: 2px;
+}
+
+.chip-input {
+  background: white;
+  border: 1px solid #1654ff;
+  border-radius: 999px;
+  color: #28384f;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  width: 132px;
+  outline: none;
+}
+
+.chip-input::placeholder {
+  color: #8b9ab0;
+  font-weight: 400;
+}
+
 .composer-input-row {
   display: flex;
   align-items: flex-end;

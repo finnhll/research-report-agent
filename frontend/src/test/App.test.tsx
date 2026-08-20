@@ -38,7 +38,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
   });
 
-  it("submits a research goal with selected dimensions", async () => {
+  it("submits a research goal with no dimensions preselected", async () => {
     mocks.listRuns.mockResolvedValue([]);
     mocks.createRun.mockResolvedValue({ run_id: "run_001" });
     const user = userEvent.setup();
@@ -51,10 +51,55 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /send/i }));
 
     await vi.waitFor(() =>
+      expect(mocks.createRun).toHaveBeenCalledWith("Compare battery chemistries", []),
+    );
+  });
+
+  it("submits the dimensions the user picked, including a custom focus", async () => {
+    mocks.listRuns.mockResolvedValue([]);
+    mocks.createRun.mockResolvedValue({ run_id: "run_001" });
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.type(
+      await screen.findByLabelText(/research goal/i),
+      "Compare battery chemistries",
+    );
+    await user.click(screen.getByRole("button", { name: "cost" }));
+    await user.click(screen.getByRole("button", { name: /add focus/i }));
+    await user.type(screen.getByLabelText(/add a focus area/i), "supply chain{Enter}");
+    await user.click(screen.getByRole("button", { name: /send/i }));
+
+    await vi.waitFor(() =>
       expect(mocks.createRun).toHaveBeenCalledWith("Compare battery chemistries", [
         "cost",
-        "safety",
+        "supply chain",
       ]),
     );
+  });
+
+  it("stops the user selecting more than two dimensions", async () => {
+    mocks.listRuns.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(await screen.findByRole("button", { name: "cost" }));
+    await user.click(screen.getByRole("button", { name: "risks" }));
+
+    expect(screen.getByRole("button", { name: "tradeoffs" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /add focus/i })).toBeDisabled();
+    expect(screen.getByText(/2 of 2 focus areas/i)).toBeInTheDocument();
+  });
+
+  it("lets the user swap a dimension once at the limit", async () => {
+    mocks.listRuns.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(await screen.findByRole("button", { name: "cost" }));
+    await user.click(screen.getByRole("button", { name: "risks" }));
+    await user.click(screen.getByRole("button", { name: "cost" }));
+
+    expect(screen.getByRole("button", { name: "tradeoffs" })).toBeEnabled();
   });
 });

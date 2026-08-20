@@ -264,6 +264,7 @@ class Orchestrator:
             run_id=run_id,
             goal=state["goal"],
             results=state.get("results", []),
+            dimensions=state.get("dimensions", []),
         )
         await self.database.reports.save(report)
         await self._emit(

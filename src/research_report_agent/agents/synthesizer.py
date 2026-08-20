@@ -90,6 +90,9 @@ like "task_002_finding_013" as a citation — it is not a citation, and a reader
 have no way to resolve it.
 - Explain unresolved contradictions and uncertainty; separate evidence from opinion.
 - Include a comparison table when the goal is comparative, else set it to null.
+- When the user named required dimensions, give each one its own section (or its own \
+column in the comparison table when comparing options), and say so plainly in \
+"limitations" if the evidence does not actually cover one of them.
 - Frame conclusions as evidence-based tradeoffs, never as personalized purchasing, \
 medical, legal, financial, or safety advice.
 
@@ -112,6 +115,7 @@ class Synthesizer:
         run_id: str,
         goal: str,
         results: list[WorkerResult],
+        dimensions: list[str] | None = None,
     ) -> ReportDocument:
         findings, sources = self._merge_evidence(results)
         if not findings or not sources:
@@ -120,7 +124,7 @@ class Synthesizer:
         citation_map = {f"[{i}]": source.source_id for i, source in enumerate(sources, start=1)}
         draft = await self.llm.complete_structured(
             system=_SYSTEM,
-            user=self._prompt(goal, findings, sources, citation_map),
+            user=self._prompt(goal, findings, sources, citation_map, dimensions or []),
             schema=_ReportDraft,
         )
 
@@ -173,6 +177,7 @@ class Synthesizer:
         findings: list[Finding],
         sources: list[Source],
         citation_map: dict[str, str],
+        dimensions: list[str],
     ) -> str:
         source_lines = "\n".join(
             f"{label}: {source.title} — {source.publisher} ({source.url})"
@@ -183,8 +188,14 @@ class Synthesizer:
             f"(sources: {finding.source_ids}, confidence: {finding.confidence:.2f})"
             for finding in findings
         )
+        dimension_line = (
+            f"Required dimensions (give each its own section): {dimensions}\n\n"
+            if dimensions
+            else ""
+        )
         return (
             f"Research goal: {goal}\n\n"
+            f"{dimension_line}"
             f"Sources:\n{source_lines}\n\n"
             f"Accepted findings:\n{finding_lines}"
         )

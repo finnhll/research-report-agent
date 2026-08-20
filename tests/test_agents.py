@@ -255,3 +255,31 @@ async def test_synthesizer_falls_back_when_llm_basis_is_invalid() -> None:
 
     basis = document.structured["conclusions"][0]["basis"]
     assert basis == document.structured["accepted_finding_ids"][:1]
+
+
+async def test_synthesizer_passes_dimensions_into_the_prompt() -> None:
+    result = worker_result()
+    llm = FakeLLMClient([_draft()])
+
+    await Synthesizer(llm).synthesize(
+        run_id="run_001",
+        goal="Compare technologies",
+        results=[result],
+        dimensions=["cost", "risks"],
+    )
+
+    prompt = llm.calls[0]["user"]
+    assert "Required dimensions" in prompt
+    assert "cost" in prompt
+    assert "risks" in prompt
+
+
+async def test_synthesizer_omits_the_dimension_line_when_none_are_given() -> None:
+    result = worker_result()
+    llm = FakeLLMClient([_draft()])
+
+    await Synthesizer(llm).synthesize(
+        run_id="run_001", goal="Compare technologies", results=[result]
+    )
+
+    assert "Required dimensions" not in llm.calls[0]["user"]
