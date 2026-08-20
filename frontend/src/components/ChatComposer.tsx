@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Lenses, not topics. A dimension becomes a coverage contract: the planner must
@@ -18,11 +18,18 @@ const MAX_DIMENSIONS = 2;
 export default function ChatComposer({
   onSubmit,
   submitting,
+  value,
+  onValueChange,
 }: {
   onSubmit: (goal: string, dimensions: string[]) => void;
   submitting: boolean;
+  /** Controlled when provided, so the example prompts can fill the box. */
+  value?: string;
+  onValueChange?: (next: string) => void;
 }) {
-  const [goal, setGoal] = useState("");
+  const [internalGoal, setInternalGoal] = useState("");
+  const goal = value ?? internalGoal;
+  const setGoal = onValueChange ?? setInternalGoal;
   const [selected, setSelected] = useState<string[]>([]);
   const [customDraft, setCustomDraft] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -50,10 +57,16 @@ export default function ChatComposer({
     setCustomDraft(null);
   }
 
+  useEffect(autoGrow, [goal]);
+
   function autoGrow() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
+    // While empty, let CSS own the resting height. Measuring at mount can happen
+    // before layout settles, and a bad measurement would stick until the next
+    // keystroke.
+    if (!el.value) return;
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }
 

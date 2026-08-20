@@ -1,12 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import ChatComposer from "./components/ChatComposer";
-import ConversationTurn from "./components/ConversationTurn";
 import ModelSettings from "./components/ModelSettings";
+import RunRail from "./components/RunRail";
+import RunWorkspace from "./components/RunWorkspace";
+
+const EXAMPLES = [
+  "How are mid-size banks actually deploying LLMs in production today?",
+  "Compare heat pump economics in cold climates versus gas furnaces",
+  "What's the state of solid-state battery commercialisation in 2026?",
+];
 
 export default function App() {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [composing, setComposing] = useState(true);
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [draft, setDraft] = useState("");
   const queryClient = useQueryClient();
 
   const runsQuery = useQuery({
@@ -18,8 +30,11 @@ export default function App() {
   const createRun = useMutation({
     mutationFn: ({ goal, dimensions }: { goal: string; dimensions: string[] }) =>
       api.createRun(goal, dimensions),
-    onSuccess: () => {
+    onSuccess: (run) => {
       queryClient.invalidateQueries({ queryKey: ["runs"] });
+      setSelectedId(run.run_id);
+      setComposing(false);
+      setRailOpen(false);
     },
   });
 
@@ -27,49 +42,130 @@ export default function App() {
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
 
-  return (
-    <div className="app-shell chat-shell">
-      <header className="app-header">
-        <div>
-          <p className="eyebrow">Orchestrator + worker agents</p>
-          <h1>Research &amp; Report Agent</h1>
-        </div>
-        <div className="button-row">
-          <button onClick={() => setSettingsOpen((open) => !open)}>⚙ Model API</button>
-        </div>
-      </header>
+  // Keep the selection pointing at something real as runs come and go.
+  useEffect(() => {
+    if (selectedId && !runs.some((run) => run.run_id === selectedId)) {
+      setSelectedId(null);
+      setComposing(true);
+    }
+  }, [runs, selectedId]);
 
-      {settingsOpen ? (
-        <div className="settings-wrap">
-          <ModelSettings onClose={() => setSettingsOpen(false)} />
-        </div>
+  const selected = runs.find((run) => run.run_id === selectedId) ?? null;
+  const showWorkspace = !composing && selected !== null;
+
+  function openNew() {
+    setComposing(true);
+    setSelectedId(null);
+    setRailOpen(false);
+    setTraceOpen(false);
+  }
+
+  function selectRun(runId: string) {
+    setSelectedId(runId);
+    setComposing(false);
+    setRailOpen(false);
+  }
+
+  const shellClass = [
+    "app",
+    showWorkspace && traceOpen ? "inspect" : "",
+    railOpen ? "railopen" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div className={shellClass}>
+      <RunRail
+        runs={runs}
+        selectedId={selectedId}
+        onSelect={selectRun}
+        onNew={openNew}
+        onOpenSettings={() => setSettingsOpen(true)}
+        loading={runsQuery.isLoading}
+      />
+
+      {railOpen ? (
+        <button
+          className="rail-scrim"
+          onClick={() => setRailOpen(false)}
+          aria-label="Close run list"
+        />
       ) : null}
 
-      <main className="chat-main">
-        <ChatComposer
-          submitting={createRun.isPending}
-          onSubmit={(goal, dimensions) => createRun.mutate({ goal, dimensions })}
+      {showWorkspace ? (
+        <RunWorkspace
+          key={selected.run_id}
+          run={selected}
+          traceOpen={traceOpen}
+          onToggleTrace={() => setTraceOpen((open) => !open)}
+          onToggleRail={() => setRailOpen((open) => !open)}
         />
-        {createRun.isError ? (
-          <p className="error composer-error">{(createRun.error as Error).message}</p>
-        ) : null}
+      ) : (
+        <main className="work">
+          <div className="topbar">
+            <button
+              className="tbtn railtoggle"
+              onClick={() => setRailOpen((open) => !open)}
+              aria-label="Show runs"
+            >
+              ☰
+            </button>
+            <h1>New question</h1>
+          </div>
+          <div className="canvas">
+            <div className="sheet">
+              <div className="hello">
+                <h2>What do you want researched?</h2>
+                <p>
+                  Ask a broad question. The agent breaks it into tasks, searches the web,
+                  checks its own work, and writes back a cited report.
+                </p>
 
-        <div className="chat-feed">
-          {runsQuery.isLoading ? <p className="muted">Loading…</p> : null}
-          {runsQuery.isError ? (
-            <p className="error">{(runsQuery.error as Error).message}</p>
-          ) : null}
-          {runs.length === 0 && !runsQuery.isLoading ? (
-            <p className="empty chat-empty">
-              Ask a research question above to see the agent plan, research, and report
-              back — right here.
-            </p>
-          ) : null}
-          {runs.map((run) => (
-            <ConversationTurn key={run.run_id} run={run} />
-          ))}
+                <ChatComposer
+                  submitting={createRun.isPending}
+                  value={draft}
+                  onValueChange={setDraft}
+                  onSubmit={(goal, dimensions) => {
+                    createRun.mutate({ goal, dimensions });
+                    setDraft("");
+                  }}
+                />
+                {createRun.isError ? (
+                  <p className="error composer-error">
+                    {(createRun.error as Error).message}
+                  </p>
+                ) : null}
+
+                <div className="examples">
+                  <div className="ex-label">Or start from one of these</div>
+                  {EXAMPLES.map((example) => (
+                    <button
+                      className="ex"
+                      key={example}
+                      onClick={() => setDraft(example)}
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+
+                {runsQuery.isError ? (
+                  <p className="error">{(runsQuery.error as Error).message}</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {settingsOpen ? (
+        <div className="modal-scrim" role="presentation">
+          <div className="modal">
+            <ModelSettings onClose={() => setSettingsOpen(false)} />
+          </div>
         </div>
-      </main>
+      ) : null}
     </div>
   );
 }

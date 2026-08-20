@@ -1,8 +1,7 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import ConversationTurn from "../components/ConversationTurn";
+import RunWorkspace from "../components/RunWorkspace";
 import type { Report, Run, TaskRecord, WorkerAttempt } from "../types";
 
 const mocks = vi.hoisted(() => ({
@@ -17,22 +16,16 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../api", () => ({
   api: mocks,
   reportMarkdownUrl: vi.fn(() => "http://localhost:8000/report.md"),
+  API_BASE: "http://localhost:8000",
 }));
 
 const run: Run = {
   run_id: "run_001",
   goal: "Compare EV battery chemistries",
-  dimensions: ["cost", "safety"],
+  dimensions: ["cost", "risks"],
   phase: "terminal",
   status: "complete",
-  budget: {
-    max_parallel_workers: 3,
-    max_reasoning_steps: 10,
-    max_tool_calls_per_attempt: 6,
-    attempt_timeout_seconds: 240,
-    max_retries_per_task: 1,
-    max_replans: 1,
-  },
+  budget: { max_retries_per_task: 1, max_replans: 1 },
   usage: {
     llm_calls: 3,
     tool_calls: 9,
@@ -113,19 +106,69 @@ const report: Report = {
   created_at: "2026-08-16T00:01:00Z",
 };
 
-function renderTurn() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+function renderWorkspace(overrides: Partial<Run> = {}, traceOpen = false) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ConversationTurn run={run} />
+      <RunWorkspace
+        run={{ ...run, ...overrides }}
+        traceOpen={traceOpen}
+        onToggleTrace={() => {}}
+        onToggleRail={() => {}}
+      />
     </QueryClientProvider>,
   );
 }
 
-describe("ConversationTurn", () => {
-  it("renders the goal, the formatted report, and an expandable trace", async () => {
+describe("RunWorkspace", () => {
+  it("renders the goal, focus tags, and the cited report", async () => {
+    mocks.getRun.mockResolvedValue(run);
+    mocks.listTasks.mockResolvedValue([task]);
+    mocks.listAttempts.mockResolvedValue([attempt]);
+    mocks.listEvents.mockResolvedValue({ events: [] });
+    mocks.getReport.mockResolvedValue(report);
+
+    renderWorkspace();
+
+    expect(await screen.findByTitle("Compare EV battery chemistries")).toBeInTheDocument();
+    expect(await screen.findByText("Battery chemistry comparison")).toBeInTheDocument();
+    expect(screen.getByText("Example source")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "[1]" })).toHaveAttribute("href", "#source-1");
+    // the run's focus areas are shown back to the user
+    expect(screen.getByText("cost")).toBeInTheDocument();
+    expect(screen.getByText("risks")).toBeInTheDocument();
+  });
+
+  it("maps the backend phase onto the five human stages", async () => {
+    mocks.getRun.mockResolvedValue({ ...run, phase: "executing", status: "running" });
+    mocks.listTasks.mockResolvedValue([task]);
+    mocks.listAttempts.mockResolvedValue([attempt]);
+    mocks.listEvents.mockResolvedValue({ events: [] });
+
+    renderWorkspace({ phase: "executing", status: "running" });
+
+    for (const stage of ["Check", "Plan", "Research", "Review", "Write"]) {
+      expect(await screen.findByText(stage)).toBeInTheDocument();
+    }
+    // the worker's real question is shown, not an opaque task id
+    expect(await screen.findByText("Identify battery chemistries")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /stop/i })).toBeInTheDocument();
+  });
+
+  it("explains a blocked run instead of showing a raw error", async () => {
+    mocks.getRun.mockResolvedValue(run);
+    mocks.listTasks.mockResolvedValue([]);
+    mocks.listAttempts.mockResolvedValue([]);
+    mocks.listEvents.mockResolvedValue({ events: [] });
+    mocks.getReport.mockRejectedValue(new Error("no report"));
+
+    renderWorkspace({ status: "blocked", error: "Personal data gathering is refused." });
+
+    expect(await screen.findByText(/this one didn't run/i)).toBeInTheDocument();
+    expect(screen.getByText(/personal data gathering is refused/i)).toBeInTheDocument();
+  });
+
+  it("shows the trace inspector when it is open", async () => {
     mocks.getRun.mockResolvedValue(run);
     mocks.listTasks.mockResolvedValue([task]);
     mocks.listAttempts.mockResolvedValue([attempt]);
@@ -145,22 +188,10 @@ describe("ConversationTurn", () => {
     });
     mocks.getReport.mockResolvedValue(report);
 
-    renderTurn();
+    renderWorkspace({}, true);
 
-    expect(await screen.findByText("Compare EV battery chemistries")).toBeInTheDocument();
-    expect(await screen.findByText("Battery chemistry comparison")).toBeInTheDocument();
-    expect(screen.getByText("Example source")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "[1]" })).toHaveAttribute("href", "#source-1");
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /show research trace/i }));
-
-    const taskToggle = await screen.findByText("Identify battery chemistries");
-    expect(screen.getByText("run.completed")).toBeInTheDocument();
-
-    // The attempt result is inside the collapsed task row until it's expanded.
-    expect(screen.queryByText("Found three relevant sources.")).not.toBeInTheDocument();
-    await user.click(taskToggle);
+    expect(await screen.findByText("run.completed")).toBeInTheDocument();
     expect(await screen.findByText("Found three relevant sources.")).toBeInTheDocument();
+    expect(screen.getByText("task_001")).toBeInTheDocument();
   });
 });

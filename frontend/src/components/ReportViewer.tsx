@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { reportMarkdownUrl } from "../api";
 import type { Report } from "../types";
 import { ComparisonTable, Prose, renderInline } from "./Markdown";
 import SourceList from "./SourceList";
@@ -19,16 +18,8 @@ export default function ReportViewer({ report }: { report: Report }) {
       <header className="report-card-header">
         <h2>{report.title}</h2>
       </header>
-      <div className="report-actions button-row">
-        <a
-          className="button"
-          href={reportMarkdownUrl(report.run_id)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Download
-        </a>
-        <button onClick={copyReport}>{copied ? "Copied" : "Copy"}</button>
+      <div className="report-actions">
+        <button onClick={copyReport}>{copied ? "Copied" : "Copy report"}</button>
       </div>
 
       <div className="report-lead">
@@ -56,6 +47,14 @@ export default function ReportViewer({ report }: { report: Report }) {
             <li key={conclusion.conclusion}>
               <span>{renderInline(conclusion.conclusion, citationLabels)}</span>
               <span className="confidence-badge">
+                <span className="confidence-bars" aria-hidden="true">
+                  {[0, 1, 2, 3, 4].map((step) => (
+                    <i
+                      key={step}
+                      className={conclusion.confidence * 5 > step ? "filled" : ""}
+                    />
+                  ))}
+                </span>
                 {(conclusion.confidence * 100).toFixed(0)}%
               </span>
             </li>

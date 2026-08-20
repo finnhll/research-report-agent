@@ -1,0 +1,169 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, reportMarkdownUrl } from "../api";
+import { useRunStream } from "../hooks/useRunStream";
+import type { Run } from "../types";
+import { STATUS_LABELS, isTerminal, statusTone } from "../lib/phases";
+import Inspector from "./Inspector";
+import ProgressSpine from "./ProgressSpine";
+import ReportViewer from "./ReportViewer";
+
+export default function RunWorkspace({
+  run: initialRun,
+  traceOpen,
+  onToggleTrace,
+  onToggleRail,
+}: {
+  run: Run;
+  traceOpen: boolean;
+  onToggleTrace: () => void;
+  onToggleRail: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const runId = initialRun.run_id;
+
+  const runQuery = useQuery({
+    queryKey: ["run", runId],
+    queryFn: () => api.getRun(runId),
+    initialData: initialRun,
+    refetchInterval: (query) => (query.state.data?.status === "running" ? 1500 : false),
+  });
+  const run = runQuery.data ?? initialRun;
+  const active = run.status === "running";
+  useRunStream(runId, active);
+
+  const tasksQuery = useQuery({
+    queryKey: ["run-data", runId, "tasks"],
+    queryFn: () => api.listTasks(runId),
+    refetchInterval: active ? 1500 : false,
+  });
+  const attemptsQuery = useQuery({
+    queryKey: ["run-data", runId, "attempts"],
+    queryFn: () => api.listAttempts(runId),
+    refetchInterval: active ? 1500 : false,
+  });
+  const eventsQuery = useQuery({
+    queryKey: ["run-data", runId, "events"],
+    queryFn: () => api.listEvents(runId),
+    enabled: traceOpen,
+    refetchInterval: active && traceOpen ? 1500 : false,
+  });
+  const reportQuery = useQuery({
+    queryKey: ["run-data", runId, "report"],
+    queryFn: () => api.getReport(runId),
+    enabled: !active,
+    retry: false,
+  });
+
+  const cancel = useMutation({
+    mutationFn: () => api.cancelRun(runId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["run", runId] });
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+    },
+  });
+
+  const tasks = tasksQuery.data ?? [];
+  const attempts = attemptsQuery.data ?? [];
+  const report = reportQuery.data;
+  const blocked = run.status === "blocked" || run.status === "failed";
+
+  return (
+    <>
+      <main className="work">
+        <div className="topbar">
+          <button className="tbtn railtoggle" onClick={onToggleRail} aria-label="Show runs">
+            ☰
+          </button>
+          <h1 title={run.goal}>{run.goal}</h1>
+          <span className="spacer" />
+          <button className="tbtn" onClick={onToggleTrace} aria-expanded={traceOpen}>
+            Trace
+          </button>
+          {report ? (
+            <a
+              className="tbtn bordered"
+              href={reportMarkdownUrl(runId)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Download
+            </a>
+          ) : null}
+          {active ? (
+            <button
+              className="tbtn stop"
+              onClick={() => cancel.mutate()}
+              disabled={cancel.isPending}
+            >
+              {cancel.isPending ? "Stopping…" : "Stop"}
+            </button>
+          ) : null}
+        </div>
+
+        <div className="canvas">
+          <div className="sheet">
+            {run.dimensions.length ? (
+              <div className="focus-row">
+                <span className="focus-label">Focus</span>
+                {run.dimensions.map((dimension) => (
+                  <span className="focus-tag" key={dimension}>
+                    {dimension}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            {blocked ? (
+              <div className="blocked">
+                <h3>
+                  {run.status === "blocked" ? "This one didn't run" : "This run failed"}
+                </h3>
+                <p>
+                  {run.status === "blocked"
+                    ? "The intake check stopped this question before any research started, so nothing was searched and no sources were fetched."
+                    : "The run stopped before a report could be written."}
+                </p>
+                {run.error ? (
+                  <div className="why">
+                    <b>Reason</b>
+                    {run.error}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <ProgressSpine run={run} tasks={tasks} attempts={attempts} />
+            )}
+
+            {report ? <ReportViewer report={report} /> : null}
+
+            {active ? (
+              <p className="await-note">
+                Your report will appear here when the research is done. You can leave this
+                page — the run keeps going.
+              </p>
+            ) : null}
+
+            {!active && !report && !blocked ? (
+              <p className="await-note">
+                <span className={`status-badge ${statusTone(run.status)}`}>
+                  {STATUS_LABELS[run.status]}
+                </span>
+                {isTerminal(run.status) ? " — no report was produced for this run." : null}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </main>
+
+      {traceOpen ? (
+        <Inspector
+          run={run}
+          tasks={tasks}
+          attempts={attempts}
+          events={eventsQuery.data?.events ?? []}
+          onClose={onToggleTrace}
+        />
+      ) : null}
+    </>
+  );
+}

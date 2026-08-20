@@ -17,6 +17,30 @@ vi.mock("../api", () => ({
   reportMarkdownUrl: vi.fn(() => "http://localhost:8000/report.md"),
 }));
 
+function makeRun(overrides: Record<string, unknown> = {}) {
+  return {
+    run_id: "run_001",
+    goal: "Compare battery chemistries",
+    dimensions: [],
+    phase: "planning",
+    status: "running",
+    budget: {},
+    usage: {
+      llm_calls: 0,
+      tool_calls: 0,
+      search_calls: 0,
+      tokens_used: 0,
+      retries: 0,
+      replans: 0,
+    },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    completed_at: null,
+    error: null,
+    ...overrides,
+  };
+}
+
 function renderApp() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -29,18 +53,19 @@ function renderApp() {
 }
 
 describe("App", () => {
-  it("renders the chat composer and empty state", async () => {
+  it("renders the composer and the empty run rail", async () => {
     mocks.listRuns.mockResolvedValue([]);
     renderApp();
 
-    expect(await screen.findByText(/ask a research question above/i)).toBeInTheDocument();
+    expect(await screen.findByText(/what do you want researched/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/research goal/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+    expect(await screen.findByText(/no runs yet/i)).toBeInTheDocument();
   });
 
   it("submits a research goal with no dimensions preselected", async () => {
     mocks.listRuns.mockResolvedValue([]);
-    mocks.createRun.mockResolvedValue({ run_id: "run_001" });
+    mocks.createRun.mockResolvedValue(makeRun());
     const user = userEvent.setup();
     renderApp();
 
@@ -57,7 +82,7 @@ describe("App", () => {
 
   it("submits the dimensions the user picked, including a custom focus", async () => {
     mocks.listRuns.mockResolvedValue([]);
-    mocks.createRun.mockResolvedValue({ run_id: "run_001" });
+    mocks.createRun.mockResolvedValue(makeRun());
     const user = userEvent.setup();
     renderApp();
 
