@@ -155,8 +155,12 @@ describe("ConversationTurn", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /show research trace/i }));
 
-    expect(await screen.findByText("Identify battery chemistries")).toBeInTheDocument();
-    expect(await screen.findByText("Found three relevant sources.")).toBeInTheDocument();
+    const taskToggle = await screen.findByText("Identify battery chemistries");
     expect(screen.getByText("run.completed")).toBeInTheDocument();
+
+    // The attempt result is inside the collapsed task row until it's expanded.
+    expect(screen.queryByText("Found three relevant sources.")).not.toBeInTheDocument();
+    await user.click(taskToggle);
+    expect(await screen.findByText("Found three relevant sources.")).toBeInTheDocument();
   });
 });

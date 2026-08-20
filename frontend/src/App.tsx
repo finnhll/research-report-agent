@@ -35,7 +35,6 @@ export default function App() {
           <h1>Research &amp; Report Agent</h1>
         </div>
         <div className="button-row">
-          <span className="stack-badge">Python · LangGraph · FastAPI · React</span>
           <button onClick={() => setSettingsOpen((open) => !open)}>⚙ Model API</button>
         </div>
       </header>

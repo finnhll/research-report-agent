@@ -41,7 +41,6 @@ body {
   text-transform: uppercase;
 }
 
-.stack-badge,
 .button,
 button {
   border: 1px solid #c9d4e2;
@@ -93,16 +92,9 @@ button.danger {
   color: #a10017;
 }
 
-main,
-.dashboard-grid {
+main {
   max-width: 1280px;
   margin: 0 auto;
-}
-
-.dashboard-grid {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .panel {
@@ -187,11 +179,76 @@ textarea {
   gap: 12px;
 }
 
-.task-card,
 .attempt-card {
   border: 1px solid #dde5ee;
   border-radius: 10px;
   padding: 14px;
+}
+
+.task-result-list {
+  display: grid;
+  gap: 10px;
+}
+
+.task-result {
+  border: 1px solid #dde5ee;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.task-result-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 0;
+  background: white;
+  cursor: pointer;
+  text-align: left;
+}
+
+.task-result-toggle:hover {
+  background: #f7faff;
+}
+
+.task-result-question {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2c3a52;
+}
+
+.task-result-meta {
+  flex-shrink: 0;
+  color: #6d7c92;
+  font-size: 12px;
+}
+
+.task-result-chevron {
+  flex-shrink: 0;
+  display: inline-block;
+  color: #8393ab;
+  transition: transform 0.15s ease;
+}
+
+.task-result-chevron.open {
+  transform: rotate(90deg);
+}
+
+.task-result-body {
+  padding: 0 14px 14px;
+  border-top: 1px solid #e5ebf2;
+}
+
+.task-result-body dl {
+  margin-top: 14px;
+}
+
+.task-result-body .task-list {
+  margin-top: 14px;
 }
 
 .card-title-row {
@@ -569,15 +626,17 @@ dd {
 }
 
 .report-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
   margin-bottom: 12px;
 }
 
 .report-card-header h2 {
   font-size: 19px;
+}
+
+.report-actions {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5ebf2;
 }
 
 .report-lead {
@@ -731,14 +790,6 @@ dd {
   .app-header,
   .panel-heading {
     align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .report-card-header {
     flex-direction: column;
   }
 }

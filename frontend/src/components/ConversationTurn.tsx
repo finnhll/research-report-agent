@@ -2,11 +2,10 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useRunStream } from "../hooks/useRunStream";
-import type { Run } from "../types";
-import AttemptCard from "./AttemptCard";
+import type { Run, WorkerAttempt } from "../types";
 import EventTimeline from "./EventTimeline";
 import ReportViewer from "./ReportViewer";
-import TaskCard from "./TaskCard";
+import TaskResult from "./TaskResult";
 
 const PHASE_LABELS: Record<string, string> = {
   created: "Getting started",
@@ -92,6 +91,12 @@ export default function ConversationTurn({ run: initialRun }: { run: Run }) {
 
   const tasks = tasksQuery.data ?? [];
   const completedCount = tasks.filter((task) => task.state === "completed").length;
+  const attemptsByTask = new Map<string, WorkerAttempt[]>();
+  for (const attempt of attemptsQuery.data ?? []) {
+    const existing = attemptsByTask.get(attempt.task_id) ?? [];
+    existing.push(attempt);
+    attemptsByTask.set(attempt.task_id, existing);
+  }
 
   return (
     <div className="chat-turn">
@@ -167,24 +172,18 @@ export default function ConversationTurn({ run: initialRun }: { run: Run }) {
           </button>
           {detailsOpen ? (
             <div className="chat-details">
-              <div className="dashboard-grid">
-                <section>
-                  <h4>Tasks</h4>
-                  <div className="task-list">
-                    {tasks.map((task) => (
-                      <TaskCard key={task.task.task_id} record={task} />
-                    ))}
-                  </div>
-                </section>
-                <section>
-                  <h4>Worker attempts</h4>
-                  <div className="task-list">
-                    {attemptsQuery.data?.map((attempt) => (
-                      <AttemptCard key={attempt.attempt_id} attempt={attempt} />
-                    ))}
-                  </div>
-                </section>
-              </div>
+              <section>
+                <h4>Research tasks</h4>
+                <div className="task-result-list">
+                  {tasks.map((task) => (
+                    <TaskResult
+                      key={task.task.task_id}
+                      record={task}
+                      attempts={attemptsByTask.get(task.task.task_id) ?? []}
+                    />
+                  ))}
+                </div>
+              </section>
               <section>
                 <h4>Event trace</h4>
                 <EventTimeline events={eventsQuery.data?.events ?? []} />

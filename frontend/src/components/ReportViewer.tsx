@@ -18,18 +18,18 @@ export default function ReportViewer({ report }: { report: Report }) {
     <article className="report-card">
       <header className="report-card-header">
         <h2>{report.title}</h2>
-        <div className="button-row">
-          <a
-            className="button"
-            href={reportMarkdownUrl(report.run_id)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Download
-          </a>
-          <button onClick={copyReport}>{copied ? "Copied" : "Copy"}</button>
-        </div>
       </header>
+      <div className="report-actions button-row">
+        <a
+          className="button"
+          href={reportMarkdownUrl(report.run_id)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Download
+        </a>
+        <button onClick={copyReport}>{copied ? "Copied" : "Copy"}</button>
+      </div>
 
       <div className="report-lead">
         <Prose text={report.structured.executive_summary} citationLabels={citationLabels} />
