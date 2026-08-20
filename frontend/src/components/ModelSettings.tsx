@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { ModelConfigInfo } from "../types";
+import type { ModelConfigInfo, Provider, ProviderPreset } from "../types";
 
 export default function ModelSettings({ onClose }: { onClose: () => void }) {
+  const [providers, setProviders] = useState<ProviderPreset[]>([]);
   const [info, setInfo] = useState<ModelConfigInfo | null>(null);
+  const [provider, setProvider] = useState<Provider>("openai");
   const [model, setModel] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -14,15 +16,25 @@ export default function ModelSettings({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api
-      .getModelConfig()
-      .then((config) => {
+    Promise.all([api.getModelProviders(), api.getModelConfig()])
+      .then(([providerList, config]) => {
+        setProviders(providerList);
         setInfo(config);
+        setProvider(config.provider);
         setModel(config.model);
         setBaseUrl(config.base_url ?? "");
       })
       .catch(() => setError("Failed to load model configuration"));
   }, []);
+
+  function selectProvider(next: Provider) {
+    setProvider(next);
+    const preset = providers.find((item) => item.id === next);
+    if (preset) {
+      setModel(preset.models[0] ?? "");
+      setBaseUrl(preset.base_url ?? "");
+    }
+  }
 
   async function save() {
     setBusy(true);
@@ -30,6 +42,7 @@ export default function ModelSettings({ onClose }: { onClose: () => void }) {
     setSaved(false);
     try {
       const config = await api.saveModelConfig({
+        provider,
         model,
         base_url: baseUrl,
         api_key: apiKey || undefined,
@@ -66,6 +79,8 @@ export default function ModelSettings({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const activePreset = providers.find((item) => item.id === provider);
+
   return (
     <section className="panel">
       <div className="panel-heading">
@@ -74,21 +89,40 @@ export default function ModelSettings({ onClose }: { onClose: () => void }) {
       </div>
       <p className="hint">
         Stored server-side in <code>model-config.json</code> (gitignored). The key is never
-        returned to the browser — only a masked preview. Works with any OpenAI-compatible
-        endpoint via Base URL. Planner, worker, critic, guardrail, and synthesizer agents all
-        need this configured before a run can start.
+        returned to the browser — only a masked preview. OpenAI, DeepSeek, and Anthropic are
+        supported directly; any other OpenAI-compatible gateway still works by picking OpenAI
+        and setting a custom Base URL. Planner, worker, critic, guardrail, and synthesizer
+        agents all need this configured before a run can start.
       </p>
       <div className="settings-grid">
         <label>
-          Model
-          <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="gpt-4o-mini" />
+          Provider
+          <select value={provider} onChange={(event) => selectProvider(event.target.value as Provider)}>
+            {providers.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
-          Base URL (optional — for gateways / proxies)
+          Model
+          <input
+            list="model-options"
+            value={model}
+            onChange={(event) => setModel(event.target.value)}
+            placeholder={activePreset?.models[0] ?? "model id"}
+          />
+          <datalist id="model-options">
+            {activePreset?.models.map((id) => <option key={id} value={id} />)}
+          </datalist>
+        </label>
+        <label>
+          Base URL {provider === "anthropic" ? "(optional — Claude gateways only)" : "(optional — for gateways / proxies)"}
           <input
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder="https://api.openai.com/v1"
+            placeholder={activePreset?.base_url ?? "provider default"}
           />
         </label>
         <label>

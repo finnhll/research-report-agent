@@ -16,7 +16,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from research_report_agent.config import ModelConfigInfo, get_config_info, load_config, save_config
+from research_report_agent.config import (
+    PROVIDER_PRESETS,
+    ModelConfigInfo,
+    Provider,
+    get_config_info,
+    load_config,
+    save_config,
+)
 from research_report_agent.llm import LLMClient, LLMError
 from research_report_agent.orchestrator import Orchestrator
 from research_report_agent.runtime_contracts import RunRecord, RunStatus
@@ -39,9 +46,19 @@ class EventListResponse(BaseModel):
 class ModelConfigUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    provider: Provider | None = None
     model: str | None = Field(default=None, min_length=1)
     base_url: str | None = None
     api_key: str | None = None
+
+
+class ProviderPresetResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    label: str
+    base_url: str | None
+    models: list[str]
 
 
 def get_database(request: Request) -> Database:
@@ -103,6 +120,13 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/api/model-providers", response_model=list[ProviderPresetResponse])
+    async def list_model_providers() -> list[ProviderPresetResponse]:
+        return [
+            ProviderPresetResponse(id=provider_id, **preset)
+            for provider_id, preset in PROVIDER_PRESETS.items()
+        ]
+
     @app.get("/api/model-config", response_model=ModelConfigInfo)
     async def get_model_config() -> ModelConfigInfo:
         return get_config_info()
@@ -114,7 +138,12 @@ def create_app(
                 status_code=400,
                 detail="base_url must start with http:// or https://",
             )
-        save_config(model=request.model, base_url=request.base_url, api_key=request.api_key)
+        save_config(
+            provider=request.provider,
+            model=request.model,
+            base_url=request.base_url,
+            api_key=request.api_key,
+        )
         return get_config_info()
 
     @app.post("/api/model-config/test")

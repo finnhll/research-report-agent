@@ -100,7 +100,11 @@ class RunBudget(StrictRuntimeModel):
     max_parallel_workers: int = Field(default=3, gt=0)
     max_reasoning_steps: int = Field(default=10, gt=0)
     max_tool_calls_per_attempt: int = Field(default=6, gt=0)
-    attempt_timeout_seconds: float = Field(default=90, gt=0)
+    # A worker attempt can chain up to max_tool_calls_per_attempt tool calls, each
+    # preceded by an LLM call to choose the action, plus one final extraction call —
+    # against real network I/O this is measured to regularly exceed 90s (the original
+    # estimate from docs/spec/design.md before this ran against a real model/network).
+    attempt_timeout_seconds: float = Field(default=240, gt=0)
     max_retries_per_task: int = Field(default=1, ge=0)
     max_replans: int = Field(default=1, ge=0)
 

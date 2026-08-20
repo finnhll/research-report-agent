@@ -1,8 +1,18 @@
+export type Provider = "openai" | "deepseek" | "anthropic";
+
 export interface ModelConfigInfo {
+  provider: Provider;
   model: string;
   base_url: string | null;
   api_key_masked: string | null;
   key_source: "file" | "env" | null;
+}
+
+export interface ProviderPreset {
+  id: Provider;
+  label: string;
+  base_url: string | null;
+  models: string[];
 }
 
 export type RunStatus =

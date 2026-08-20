@@ -92,11 +92,31 @@ cd frontend
 npm run dev
 ```
 
-The agents need a model API key before a run can start — set it once via
-`OPENAI_API_KEY` / `AGENT_MODEL` / `OPENAI_BASE_URL` (see [`.env.example`](.env.example)),
-or click **⚙ Model API** in the running dashboard, which saves it server-side to a
-gitignored `model-config.json` (works with any OpenAI-compatible endpoint via Base URL).
-`web_search` itself needs no key — it uses DuckDuckGo's keyless HTML endpoint.
+The agents need a model API key before a run can start. Click **⚙ Model API** in the
+running dashboard: pick a **Provider** (OpenAI, DeepSeek, or Anthropic — the model and
+Base URL auto-fill with sensible defaults for each), paste a key, and save. Settings
+persist server-side to a gitignored `model-config.json`. `web_search` itself needs no
+key — it uses DuckDuckGo's keyless HTML endpoint.
+
+Equivalent env vars work too (see [`.env.example`](.env.example)): `AGENT_PROVIDER` /
+`AGENT_MODEL` plus `OPENAI_API_KEY` / `OPENAI_BASE_URL` for OpenAI or DeepSeek, or
+`ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` for Anthropic — `model-config.json` values
+always win over env vars.
+
+- **OpenAI** and **DeepSeek** (`deepseek-v4-flash` / `deepseek-v4-pro` at
+  `https://api.deepseek.com` — confirmed OpenAI-compatible, including
+  `response_format: json_object` and the `/models` list endpoint, against
+  [DeepSeek's API docs](https://api-docs.deepseek.com)) both go through the OpenAI
+  Python SDK. Any other OpenAI-compatible gateway works too — pick "OpenAI" and set a
+  custom Base URL.
+- **Anthropic** (`claude-opus-5` / `claude-sonnet-5` / `claude-haiku-4-5`) uses the
+  Anthropic Python SDK's native `messages.parse(output_format=...)` structured output
+  instead — Claude's Messages API isn't OpenAI-compatible, so it gets its own backend
+  in `llm.py` rather than being shoehorned through the JSON-mode path.
+
+`model-config.json` in this checkout is currently set to DeepSeek's `deepseek-v4-flash`
+— add your key via the Settings panel or `export OPENAI_API_KEY=<your DeepSeek key>`
+(get one at https://platform.deepseek.com/api_keys).
 
 ## API surface
 

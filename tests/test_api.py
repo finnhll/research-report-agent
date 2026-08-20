@@ -71,6 +71,20 @@ async def test_full_run_api_round_trip() -> None:
     assert "## Sources" in markdown.text
 
 
+async def test_list_model_providers() -> None:
+    client, _ = await make_client()
+    async with client:
+        response = await client.get("/api/model-providers")
+
+    assert response.status_code == 200
+    body = response.json()
+    ids = {item["id"] for item in body}
+    assert ids == {"openai", "deepseek", "anthropic"}
+    deepseek = next(item for item in body if item["id"] == "deepseek")
+    assert deepseek["base_url"] == "https://api.deepseek.com"
+    assert "deepseek-v4-flash" in deepseek["models"]
+
+
 async def test_get_model_config_defaults() -> None:
     client, _ = await make_client()
     async with client:
@@ -78,6 +92,7 @@ async def test_get_model_config_defaults() -> None:
 
     assert response.status_code == 200
     body = response.json()
+    assert body["provider"] == "openai"
     assert body["model"] == "gpt-4o-mini"
     assert body["api_key_masked"] is None
 
@@ -100,6 +115,20 @@ async def test_update_model_config_masks_the_key() -> None:
     assert body["base_url"] == "https://gateway.example.com/v1"
     assert body["api_key_masked"] is not None
     assert "sk-test-secret" not in response.text
+
+
+async def test_update_model_config_switches_provider() -> None:
+    client, _ = await make_client()
+    async with client:
+        response = await client.post(
+            "/api/model-config",
+            json={"provider": "anthropic", "model": "claude-opus-5", "api_key": "sk-ant-test"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "anthropic"
+    assert body["model"] == "claude-opus-5"
 
 
 async def test_update_model_config_rejects_bad_base_url() -> None:

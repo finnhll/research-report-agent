@@ -13,14 +13,48 @@ def isolated_config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("AGENT_MODEL", raising=False)
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    monkeypatch.delenv("AGENT_PROVIDER", raising=False)
 
 
 def test_load_config_defaults_without_file_or_env() -> None:
     loaded = config.load_config()
 
+    assert loaded.provider == "openai"
     assert loaded.model == "gpt-4o-mini"
     assert loaded.base_url is None
     assert loaded.api_key is None
+
+
+def test_deepseek_provider_gets_preset_base_url_and_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_PROVIDER", "deepseek")
+
+    loaded = config.load_config()
+
+    assert loaded.provider == "deepseek"
+    assert loaded.model == "deepseek-v4-flash"
+    assert loaded.base_url == "https://api.deepseek.com"
+
+
+def test_anthropic_provider_reads_its_own_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "should-not-be-used")
+
+    loaded = config.load_config()
+
+    assert loaded.provider == "anthropic"
+    assert loaded.api_key == "anthropic-key"
+    assert loaded.model == "claude-opus-5"
+
+
+def test_unknown_provider_in_file_falls_back_to_openai() -> None:
+    config.save_config(provider="not-a-real-provider", model="m", api_key="k")
+
+    loaded = config.load_config()
+
+    assert loaded.provider == "openai"
 
 
 def test_env_vars_are_used_when_no_file_exists(monkeypatch: pytest.MonkeyPatch) -> None:

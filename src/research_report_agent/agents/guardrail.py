@@ -10,6 +10,16 @@ illegal_activity, high_risk_advice, instruction_override, prompt_injection_leaka
 citation_risk, confidence_risk. Mark each relevant check pass, flagged, blocked, or \
 not_applicable."""
 
+_JSON_SHAPE = """Respond with JSON matching this shape exactly — the "check" key must \
+be one of the check names above, "status" must be "pass", "flagged", "blocked", or \
+"not_applicable", and "reason"/"location" are optional:
+{"guardrail_id": "...", "run_id": "...", "mode": "intake"|"final_output",
+ "verdict": "allow"|"revise"|"block"|"escalate", "risk_level": "low"|"medium"|"high"|"critical",
+ "checks": [{"check": "harmful_content", "status": "pass", "reason": null, "location": null}],
+ "reason": "...", "conditions": [], "revision_instructions": [], "blocked_reason": null}
+Only "checks" is required to list every check name above — omit fields you don't need \
+by using their default (empty list, or null)."""
+
 _INTAKE_SYSTEM = f"""You are the intake guardrail for a research agent. Review a \
 user's research GOAL before any research begins — you are judging intent, not content \
 that doesn't exist yet.
@@ -25,7 +35,7 @@ verdict must be "allow", "revise", "block", or "escalate". A "block" verdict req
 blocked_reason. A "revise" verdict requires revision_instructions. mode must be \
 "intake". Do not reveal unnecessary policy detail in a refusal.
 
-Respond with JSON matching the GuardrailReview schema."""
+{_JSON_SHAPE}"""
 
 _FINAL_SYSTEM = f"""You are the final-output guardrail for a research agent. Review a \
 SYNTHESIZED REPORT (markdown) before it is delivered to the user.
@@ -44,7 +54,7 @@ blocked_reason. A "revise" verdict requires revision_instructions describing exa
 what must change — you must never rewrite the report yourself. mode must be \
 "final_output".
 
-Respond with JSON matching the GuardrailReview schema."""
+{_JSON_SHAPE}"""
 
 
 class IntakeGuardrail:

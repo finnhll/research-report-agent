@@ -374,12 +374,15 @@ dd {
   font-weight: 700;
 }
 
-.settings-grid input {
+.settings-grid input,
+.settings-grid select {
   border: 1px solid #c9d4e2;
   border-radius: 8px;
   padding: 9px 12px;
   font: inherit;
   font-weight: 400;
+  background: white;
+  color: inherit;
 }
 
 .hint {

@@ -56,7 +56,7 @@ The fullstack runtime adds:
 | Parallel fan-out | LangGraph `Send` |
 | Async execution | Python `asyncio` |
 | Persistence/replay | LangGraph checkpointing |
-| Model calls | OpenAI Python SDK or another provider adapter |
+| Model calls | OpenAI Python SDK (OpenAI, DeepSeek) + Anthropic Python SDK (Claude), dispatched by provider — see §22 |
 | Web search | Provider-neutral search tool wrapper |
 | Page fetch | HTTP client with timeout and size limits |
 | Tests | pytest + `pytest-asyncio` |
@@ -1454,6 +1454,10 @@ Rules:
 | `GET` | `/api/runs/{run_id}/stream` | Subscribe to live SSE updates |
 | `GET` | `/api/runs/{run_id}/report` | Get final report |
 | `GET` | `/api/runs/{run_id}/report.md` | Download Markdown report |
+| `GET` | `/api/model-providers` | List built-in provider presets (label, default base URL, suggested models) |
+| `GET` | `/api/model-config` | Get current model settings (API key masked) |
+| `POST` | `/api/model-config` | Save provider/model/base URL/API key |
+| `POST` | `/api/model-config/test` | Test the configured model connection |
 | `GET` | `/health` | Health check |
 
 ### 16.2 Event stream
@@ -1522,8 +1526,16 @@ The API never exposes raw model chain-of-thought or unredacted tool output.
    - Event timeline
    - State transitions
    - Worker history
+6. **Model API settings panel** (`⚙ Model API`, header-level, not a route)
+   - Provider picker (OpenAI / DeepSeek / Anthropic) — switching it auto-fills a
+     suggested model and base URL from `/api/model-providers`
+   - Model (free text with a per-provider `<datalist>` of suggestions)
+   - Base URL (optional — gateways/proxies, or Claude-compatible endpoints)
+   - API key (write-only; the panel only ever displays a masked preview) and a
+     "Test connection" action
 
-The frontend never calls model providers or tools directly and never stores credentials.
+The frontend never calls model providers or tools directly and never stores credentials
+— the API key is submitted once to the backend and never returned in any response body.
 
 ---
 
@@ -1625,3 +1637,76 @@ The fullstack MVP is complete when it can:
 14. Download Markdown.
 15. Display event and attempt history.
 16. Always reach a defined terminal state.
+
+---
+
+## 22. Model provider architecture
+
+Added 2026-08-20 when the agent layer moved from deterministic/templated stubs to
+real model calls (see `docs/plans/2026-08-20-real-llm-rebuild.md`), then extended the
+same day to support multiple providers. Documented here because it involved a real
+architectural choice, not just configuration.
+
+### 22.1 Why two backends, not one
+
+OpenAI and DeepSeek are both reached through `openai.AsyncOpenAI` — DeepSeek's API is
+explicitly OpenAI-compatible (same `response_format: json_object` JSON mode, same
+`/models` list endpoint), so one backend (`_OpenAICompatibleBackend` in `llm.py`)
+serves both, differing only by `base_url`/`model`/`api_key`. Anthropic's Messages API
+is a different wire format (no `response_format`, different auth), so it gets its own
+backend (`_AnthropicBackend`) using the Anthropic SDK's native
+`messages.parse(output_format=YourPydanticModel)` — which validates against the
+schema **server-side** and returns an already-parsed instance, a stronger guarantee
+than OpenAI-style JSON mode (which only guarantees valid JSON, not schema
+conformance). `LLMClient` picks a backend by `ModelConfig.provider` and both expose
+the identical `complete_structured()`/`list_model_ids()` interface every agent calls.
+
+### 22.2 Configuration
+
+`config.py` holds a `PROVIDER_PRESETS` registry (label, default base URL, suggested
+models) for `openai` / `deepseek` / `anthropic`. Resolution order is
+`model-config.json` (gitignored, written by the Settings panel) > environment
+variables > provider preset defaults. Env vars are provider-scoped:
+`ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL` for Anthropic,
+`OPENAI_API_KEY`/`OPENAI_BASE_URL` for OpenAI or DeepSeek, plus
+`AGENT_PROVIDER`/`AGENT_MODEL`. Any other OpenAI-compatible gateway still works by
+picking `openai` as the provider and setting a custom base URL — the preset list is
+convenience, not a restriction.
+
+`Orchestrator` builds its `LLMClient` lazily via a `llm_factory` called once per run
+(inside `start()`), not at process startup — importing the app or starting the API
+server never requires a key; only starting a run does. This mirrors the sibling
+`sentinel` project's "lazy client, rebuilt when the saved model config changes"
+pattern and lets the Settings panel take effect on the next run with no restart.
+
+### 22.3 Operational learnings from live verification against DeepSeek
+
+Running the real pipeline end-to-end (not the mocked test suite) surfaced two things
+neither unit tests nor the design spec anticipated:
+
+1. **Plain JSON mode needs the exact field names spelled out.** Providers using
+   OpenAI-style `response_format: json_object` (OpenAI, DeepSeek) get no schema
+   injection — a prompt that just says "respond matching the FooReview schema"
+   lets the model guess field names, and it will guess wrong (observed: DeepSeek
+   emitted `{"name": "harmful_content", ...}` instead of the required
+   `{"check": "harmful_content", ...}"`, failing validation on both the original
+   attempt and the schema-repair retry). Every agent prompt using this backend must
+   render a literal example JSON shape with the real field names — not just prose.
+   (Anthropic's `output_format=` path doesn't need this — the schema is enforced
+   server-side regardless of prompt wording.)
+2. **The orchestrator's outer `asyncio.wait_for` attempt timeout is not sufficient on
+   its own.** A worker attempt was observed to run 8+ minutes past its 240s budget
+   without the outer timeout firing, while cancelling the run's whole background task
+   (`Orchestrator.cancel()`, a full `Task.cancel()`) worked instantly — ruling out an
+   actual frozen event loop. The likely mechanism: an OpenAI-compatible SDK client's
+   own internal retry-with-backoff on a slow/erroring response can run long enough
+   that a single logical "one LLM call" doesn't resolve (or raise) until well past the
+   outer deadline. Fix: both backends now construct their SDK client with an explicit
+   per-request `timeout` (60s) and a reduced `max_retries` (1), so no single HTTP
+   request can silently run long enough to blow through `RunBudget.attempt_timeout_seconds`
+   — the outer `wait_for` remains a second line of defense, not the only one.
+
+`RunBudget.attempt_timeout_seconds` was also raised from the design's original
+estimate of 90s to 240s once measured against a real multi-step ReAct loop (up to
+`max_tool_calls_per_attempt` real tool calls, each preceded by a real LLM call, plus
+one final extraction call) doing real network I/O.

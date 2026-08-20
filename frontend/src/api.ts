@@ -1,4 +1,13 @@
-import type { EventRecord, ModelConfigInfo, Report, Run, TaskRecord, WorkerAttempt } from "./types";
+import type {
+  EventRecord,
+  ModelConfigInfo,
+  Provider,
+  ProviderPreset,
+  Report,
+  Run,
+  TaskRecord,
+  WorkerAttempt,
+} from "./types";
 
 export const API_BASE =
   import.meta.env.VITE_API_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
@@ -46,10 +55,14 @@ export const api = {
   getReport(runId: string): Promise<Report> {
     return request<Report>(`/api/runs/${runId}/report`);
   },
+  getModelProviders(): Promise<ProviderPreset[]> {
+    return request<ProviderPreset[]>("/api/model-providers");
+  },
   getModelConfig(): Promise<ModelConfigInfo> {
     return request<ModelConfigInfo>("/api/model-config");
   },
   saveModelConfig(update: {
+    provider?: Provider;
     model?: string;
     base_url?: string;
     api_key?: string;
