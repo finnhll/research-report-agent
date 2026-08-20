@@ -80,12 +80,17 @@ export default function ChatComposer({
 
   return (
     <div className="composer">
-      <div className="composer-dimensions">
-        <span className="dimension-hint">
-          {atLimit
-            ? `${MAX_DIMENSIONS} of ${MAX_DIMENSIONS} focus areas — deselect one to swap`
-            : `Focus (optional, up to ${MAX_DIMENSIONS})`}
-        </span>
+      <div className="composer-focus">
+        <div className="focus-head">
+          <span className="focus-eyebrow">Focus</span>
+          <span className="focus-optional">optional</span>
+          <span className={`focus-counter ${atLimit ? "at-limit" : ""}`}>
+            {atLimit
+              ? `${MAX_DIMENSIONS} of ${MAX_DIMENSIONS} — deselect one to swap`
+              : `${selected.length} of ${MAX_DIMENSIONS}`}
+          </span>
+        </div>
+        <div className="composer-dimensions">
         {DIMENSIONS.map((dimension) => {
           const active = selected.includes(dimension);
           return (
@@ -143,8 +148,9 @@ export default function ChatComposer({
                 setCustomDraft(null);
               }
             }}
-          />
-        )}
+            />
+          )}
+        </div>
       </div>
 
       <div className="composer-input-row">
