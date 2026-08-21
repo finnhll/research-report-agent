@@ -121,27 +121,32 @@ async def test_orchestrator_fails_closed_without_evidence(database: Database) ->
 
 
 class SlowWorkerRuntime(StubWorkerRuntime):
+    def __init__(self) -> None:
+        super().__init__()
+        # Per-instance so the signal cannot leak between tests.
+        self.started = asyncio.Event()
+
     async def execute_attempt(self, request, *, cancel_event=None):  # type: ignore[no-untyped-def]
+        self.started.set()
         await asyncio.sleep(30)
         raise AssertionError("Slow worker should be cancelled")
 
 
 async def test_orchestrator_cancels_running_work(database: Database) -> None:
+    runtime = SlowWorkerRuntime()
     orchestrator = Orchestrator(
         database,
         planning_only_llm_factory(TASK_IDS),
-        worker_runtime=SlowWorkerRuntime(),
+        worker_runtime=runtime,
     )
     await database.runs.create(RunRecord(run_id="run_001", goal="Compare technologies"))
     orchestrator.start("run_001", "Compare technologies", ["cost"])
 
-    for _ in range(100):
-        await asyncio.sleep(0.01)
-        tasks = await database.tasks.list("run_001")
-        if tasks and tasks[0].state is TaskState.RUNNING:
-            break
-    else:
-        raise AssertionError("worker never started")
+    # Wait on a signal from the worker rather than polling a fixed budget. The
+    # orchestrator marks the task RUNNING before it invokes the runtime, so once
+    # execute_attempt is entered that state is already durable.
+    await asyncio.wait_for(runtime.started.wait(), timeout=30)
+    assert (await database.tasks.list("run_001"))[0].state is TaskState.RUNNING
 
     await orchestrator.cancel("run_001")
     await orchestrator.wait("run_001")
