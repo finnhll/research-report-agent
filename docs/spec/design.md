@@ -777,6 +777,7 @@ Convert accepted structured findings into a coherent, cited final report.
 The synthesizer receives:
 
 - Original user goal
+- Required dimensions, when the user named any (§17.3)
 - Valid plan
 - Accepted worker results
 - Accepted critic reviews
@@ -784,6 +785,10 @@ The synthesizer receives:
 - Gaps
 - Confidence information
 - Source metadata
+
+Each required dimension gets its own report section — or its own column in the
+comparison table when the goal is comparative — and a limitation is recorded when
+the accepted evidence does not actually cover one.
 
 ### Synthesizer rules
 
@@ -1448,12 +1453,14 @@ Rules:
 | `GET` | `/api/runs` | List runs |
 | `GET` | `/api/runs/{run_id}` | Get run summary |
 | `DELETE` | `/api/runs/{run_id}` | Cancel a running run |
+| `POST` | `/api/runs/{run_id}/restart` | Start a new run from a finished or interrupted one's goal and dimensions (`201`) |
 | `GET` | `/api/runs/{run_id}/tasks` | List task states |
 | `GET` | `/api/runs/{run_id}/attempts` | List worker attempts |
 | `GET` | `/api/runs/{run_id}/events` | Get stored event history |
 | `GET` | `/api/runs/{run_id}/stream` | Subscribe to live SSE updates |
 | `GET` | `/api/runs/{run_id}/report` | Get final report |
 | `GET` | `/api/runs/{run_id}/report.md` | Download Markdown report |
+| `GET` | `/api/runs/{run_id}/report.html` | Download a self-contained HTML report |
 | `GET` | `/api/model-providers` | List built-in provider presets (label, default base URL, suggested models) |
 | `GET` | `/api/model-config` | Get current model settings (API key masked) |
 | `POST` | `/api/model-config` | Save provider/model/base URL/API key |
@@ -1500,32 +1507,47 @@ The API never exposes raw model chain-of-thought or unredacted tool output.
 - TanStack Query
 - Native `EventSource`
 
-No router: as of the 2026-08-20 chat redesign (below) this is a single page with no
-routes, so React Router was dropped as a dependency entirely.
+No router: state lives in `App.tsx` (which run is selected, whether the composer or a
+run workspace is showing, whether the trace panel is open), so React Router was
+dropped as a dependency entirely.
 
-### 17.2 Single-page chat layout
+### 17.2 Sidebar workspace layout
 
-Redesigned 2026-08-20 from an earlier multi-page flow (a "New run" form that
-navigated to a separate `/runs/:id` dashboard route) to a single-page chat interface —
-submitting a goal no longer navigates anywhere; the result appears in place.
+Redesigned 2026-08-21 from the single-page chat feed that preceded it (which had in
+turn replaced an earlier multi-page `/runs/:id` flow). The chat metaphor stacked every
+run in one scrolling column and made the report the tail of a transcript; research runs
+are long-lived documents that are returned to, so the layout now treats them as such.
 
-1. **Composer** (`ChatComposer`, sticky at the top of the page)
+1. **Run rail** (`RunRail`, fixed left column)
+   - Every run, newest first, grouped `Today` / `Earlier`
+   - A status stripe encodes state without reading text: running, complete,
+     complete-with-caveats, blocked/failed
+   - `+ New question` returns to the composer; the model settings entry point sits
+     in the rail footer
+   - Below 880px the rail becomes off-canvas behind a `☰` toggle with a scrim
+2. **Composer** (`ChatComposer`, shown when no run is selected)
    - Auto-growing textarea; Enter to send, Shift+Enter for a newline
-   - Required-dimension toggle chips
-   - Send button; always available, independent of any other run's state
-2. **Conversation feed** (`ConversationTurn`, one per run, newest first, directly
-   below the composer)
-   - User bubble: the goal, dimension tags, relative timestamp
-   - Assistant bubble, while running: status/phase badge (friendly phase labels —
-     "Researching…", "Writing your report…" — mapped from `RunPhase`), a spinner,
-     compact per-task progress chips, and a "Stop" (cancel) action
-   - Assistant bubble, once terminal: the formatted report (see below) or an error/
-     blocked message
-   - Collapsed **"Show research trace"** toggle revealing the full task list, worker
-     attempts, and event timeline (`TaskCard`/`AttemptCard`/`EventTimeline`, unchanged)
-     for anyone who wants the full plan/attempt/event detail
-3. **Report card** (`ReportViewer`, rendered inline inside the assistant bubble, not
-   a separate page)
+   - A **focus block** carrying an eyebrow label, a live `n of 2` counter, and the
+     dimension chips (see §17.3)
+   - Example prompts that populate the box
+   - Submitting seeds the new run into the query cache and opens its workspace
+     immediately, rather than leaving the user on the composer
+3. **Run workspace** (`RunWorkspace`, replaces the composer once a run is selected)
+   - Topbar: the goal, a `Trace` toggle, a report download, and `Stop` while running
+   - **Progress spine** (`ProgressSpine`): the backend's fifteen `RunPhase` values
+     collapse to the five stages a person tracks — Check, Plan, Research, Review,
+     Write. Repair phases (`plan_repair`, `worker_repair`, `report_repair`,
+     `revising`, `replanning`) deliberately do **not** read as forward progress;
+     they surface on the affected task and as an explicit repair note
+   - Worker rows show each task's real question, its findings/sources counts, and
+     retry state — never a bare `task_00N`
+   - A blocked or failed run gets a plain-language explanation plus its reason,
+     and offers a restart rather than becoming a dead entry
+4. **Trace inspector** (`Inspector`, right panel behind the `Trace` toggle)
+   - Budget counters, the plan with per-task attempt summaries, and the event log
+   - Errors from any step are rendered here rather than swallowed
+   - Below 1180px it overlays instead of taking a third column
+5. **Report** (`ReportViewer`, rendered in the workspace)
    - Title, executive summary, comparison table rendered as a real HTML `<table>`
      (parsed from the GFM pipe-table markdown — not a raw `<pre>` dump)
    - Sections, conclusions (with a confidence badge), limitations, and a numbered
@@ -1536,7 +1558,8 @@ submitting a goal no longer navigates anywhere; the result appears in place.
      since this text is model-generated and may have absorbed untrusted web
      content via tool calls, so it only ever renders through JSX text nodes,
      which React escapes automatically)
-4. **Model API settings panel** (`⚙ Model API`, header-level toggle, not a route)
+   - Downloadable as Markdown or as a self-contained HTML file
+6. **Model API settings panel** (modal from the rail footer, not a route)
    - Provider picker (OpenAI / DeepSeek / Anthropic) — switching it auto-fills a
      suggested model and base URL from `/api/model-providers`
    - Model (free text with a per-provider `<datalist>` of suggestions)
@@ -1546,6 +1569,38 @@ submitting a goal no longer navigates anywhere; the result appears in place.
 
 The frontend never calls model providers or tools directly and never stores credentials
 — the API key is submitted once to the backend and never returned in any response body.
+
+### 17.3 Research dimensions
+
+A dimension is a **coverage contract**: an axis the user requires the report to address.
+`RunCreateRequest.dimensions` is a free-form `list[str]` (`max_length=5`), not an enum,
+so any string is valid.
+
+The presets are **lenses, not topics**. The original four (`cost`, `safety`,
+`performance`, `supply chain`) were drawn from the EV-battery example and did not
+generalise — `supply chain` is meaningless for a regulation question, `performance` for
+a labour-economics one. The current set applies to almost any question because each
+describes the shape of an answer rather than a subject area: `cost`, `risks`,
+`tradeoffs`, `alternatives`, `track record`. A free-text field covers the rest.
+
+Two rules follow from how dimensions propagate:
+
+- **Nothing is preselected.** Defaults were previously shipped as checked chips, so
+  unrelated questions silently carried them into the planner prompt and had tasks spent
+  on irrelevant axes.
+- **The UI caps selection at two**, below the API's five. The planner emits only 3–6
+  tasks, so each dimension it must cover claims one of them; two honours the user's
+  angles while leaving room to decompose the question. This cap is client-side —
+  the API still accepts five.
+
+Dimensions reach two agents. The **planner** receives them as required coverage
+(§6.1), and the **synthesizer** receives them (§6.5) and gives each one its own report
+section, or its own column in the comparison table, recording a limitation when the
+evidence does not in fact cover one.
+
+Two fields exist for closing this loop but are not yet consumed: `covered_dimensions`
+on the worker's produced context, and `missing_dimensions` on the critic review. Both
+are populated and persisted; nothing currently branches on them.
 
 ---
 
