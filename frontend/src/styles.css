@@ -1431,6 +1431,62 @@ a {
   gap: 9px;
 }
 
+.problems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.problems li {
+  border: 1px solid var(--crit);
+  border-left-width: 3px;
+  border-radius: 7px;
+  background: var(--crit-soft);
+  padding: 8px 11px;
+}
+
+.problem-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.problem-top .tid {
+  color: var(--crit);
+  font-weight: 600;
+}
+
+.problems p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  word-break: break-word;
+}
+
+.ev-data {
+  display: block;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--ink-3);
+  margin-top: 2px;
+  word-break: break-word;
+}
+
+.log li.bad::before {
+  border-color: var(--crit);
+  background: var(--crit);
+}
+
+.log li.bad .ev {
+  color: var(--crit);
+}
+
 .log {
   list-style: none;
   margin: 0;

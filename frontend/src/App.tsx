@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import type { Run } from "./types";
 import ChatComposer from "./components/ChatComposer";
 import ModelSettings from "./components/ModelSettings";
 import RunRail from "./components/RunRail";
@@ -14,6 +15,9 @@ const EXAMPLES = [
 
 export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Holds a run we just created or restarted, so the workspace can open even if
+  // the runs list has not caught up yet. Never trust list timing for navigation.
+  const [pendingRun, setPendingRun] = useState<Run | null>(null);
   const [composing, setComposing] = useState(true);
   const [traceOpen, setTraceOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
@@ -31,10 +35,21 @@ export default function App() {
     mutationFn: ({ goal, dimensions }: { goal: string; dimensions: string[] }) =>
       api.createRun(goal, dimensions),
     onSuccess: (run) => {
+      // Seed the cache before switching. invalidateQueries only *schedules* a
+      // refetch, so without this the stale-selection guard below runs against a
+      // list that does not contain the new run yet and bounces straight back to
+      // the composer -- which is what kept the user stuck on this screen.
+      queryClient.setQueryData<Run[]>(["runs"], (current) =>
+        current
+          ? [run, ...current.filter((item) => item.run_id !== run.run_id)]
+          : [run],
+      );
       queryClient.invalidateQueries({ queryKey: ["runs"] });
+      setPendingRun(run);
       setSelectedId(run.run_id);
       setComposing(false);
       setRailOpen(false);
+      setTraceOpen(false);
     },
   });
 
@@ -42,25 +57,34 @@ export default function App() {
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
 
-  // Keep the selection pointing at something real as runs come and go.
+  // Keep the selection pointing at something real as runs come and go, but never
+  // judge a list that is still loading -- an in-flight refetch is not evidence
+  // that the selected run is gone.
   useEffect(() => {
-    if (selectedId && !runs.some((run) => run.run_id === selectedId)) {
+    if (!selectedId || runsQuery.isFetching) return;
+    if (pendingRun?.run_id === selectedId) return;
+    if (!runs.some((run) => run.run_id === selectedId)) {
       setSelectedId(null);
       setComposing(true);
     }
-  }, [runs, selectedId]);
+  }, [runs, selectedId, runsQuery.isFetching, pendingRun]);
 
-  const selected = runs.find((run) => run.run_id === selectedId) ?? null;
+  // Once the list catches up, the list copy is the fresher one.
+  const selected =
+    runs.find((run) => run.run_id === selectedId) ??
+    (pendingRun?.run_id === selectedId ? pendingRun : null);
   const showWorkspace = !composing && selected !== null;
 
   function openNew() {
     setComposing(true);
     setSelectedId(null);
+    setPendingRun(null);
     setRailOpen(false);
     setTraceOpen(false);
   }
 
   function selectRun(runId: string) {
+    setPendingRun(null);
     setSelectedId(runId);
     setComposing(false);
     setRailOpen(false);
@@ -100,6 +124,17 @@ export default function App() {
           traceOpen={traceOpen}
           onToggleTrace={() => setTraceOpen((open) => !open)}
           onToggleRail={() => setRailOpen((open) => !open)}
+          onRestarted={(fresh) => {
+            queryClient.setQueryData<Run[]>(["runs"], (current) =>
+              current
+                ? [fresh, ...current.filter((item) => item.run_id !== fresh.run_id)]
+                : [fresh],
+            );
+            setPendingRun(fresh);
+            setSelectedId(fresh.run_id);
+            setComposing(false);
+            setTraceOpen(false);
+          }}
         />
       ) : (
         <main className="work">

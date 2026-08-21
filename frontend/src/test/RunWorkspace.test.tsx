@@ -1,10 +1,12 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import RunWorkspace from "../components/RunWorkspace";
 import type { Report, Run, TaskRecord, WorkerAttempt } from "../types";
 
 const mocks = vi.hoisted(() => ({
+  restartRun: vi.fn(),
   getRun: vi.fn(),
   listTasks: vi.fn(),
   listAttempts: vi.fn(),
@@ -16,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../api", () => ({
   api: mocks,
   reportMarkdownUrl: vi.fn(() => "http://localhost:8000/report.md"),
+  reportHtmlUrl: vi.fn(() => "http://localhost:8000/report.html"),
   API_BASE: "http://localhost:8000",
 }));
 
@@ -115,6 +118,7 @@ function renderWorkspace(overrides: Partial<Run> = {}, traceOpen = false) {
         traceOpen={traceOpen}
         onToggleTrace={() => {}}
         onToggleRail={() => {}}
+        onRestarted={() => {}}
       />
     </QueryClientProvider>,
   );
@@ -193,5 +197,94 @@ describe("RunWorkspace", () => {
     expect(await screen.findByText("run.completed")).toBeInTheDocument();
     expect(await screen.findByText("Found three relevant sources.")).toBeInTheDocument();
     expect(screen.getByText("task_001")).toBeInTheDocument();
+});
+
+  it("lists failures in the trace instead of hiding them", async () => {
+    mocks.getRun.mockResolvedValue(run);
+    mocks.listTasks.mockResolvedValue([task]);
+    mocks.listAttempts.mockResolvedValue([
+      {
+        ...attempt,
+        state: "failed",
+        error: "web_search timed out after 3 attempts",
+        result: null,
+      },
+    ]);
+    mocks.listEvents.mockResolvedValue({
+      events: [
+        {
+          sequence: 2,
+          event_id: "event_002",
+          run_id: "run_001",
+          event_type: "run.failed",
+          timestamp: "2026-08-16T00:02:00Z",
+          task_id: null,
+          attempt_id: null,
+          data: { error: "Orchestrator failed: budget exhausted" },
+        },
+      ],
+    });
+    mocks.getReport.mockRejectedValue(new Error("no report"));
+
+    renderWorkspace({ status: "failed", error: "Orchestrator failed" }, true);
+
+    expect(await screen.findByText(/problems/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/web_search timed out after 3 attempts/i),
+    ).toBeInTheDocument();
+    // shown twice on purpose: once in Problems, once inline in the event log
+    expect(
+      (await screen.findAllByText(/orchestrator failed: budget exhausted/i)).length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("offers to start a stopped run over, and hands back the new run", async () => {
+    const fresh = { ...run, run_id: "run_002", status: "running" as const };
+    const cancelled = { ...run, status: "cancelled" as const };
+    mocks.getRun.mockResolvedValue(cancelled);
+    mocks.listTasks.mockResolvedValue([]);
+    mocks.listAttempts.mockResolvedValue([]);
+    mocks.listEvents.mockResolvedValue({ events: [] });
+    mocks.getReport.mockRejectedValue(new Error("no report"));
+    mocks.restartRun.mockResolvedValue(fresh);
+
+    const onRestarted = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <RunWorkspace
+          run={cancelled}
+          traceOpen={false}
+          onToggleTrace={() => {}}
+          onToggleRail={() => {}}
+          onRestarted={onRestarted}
+        />
+      </QueryClientProvider>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /start over/i }));
+
+    await vi.waitFor(() => expect(mocks.restartRun).toHaveBeenCalledWith("run_001"));
+    await vi.waitFor(() => expect(onRestarted).toHaveBeenCalledWith(fresh));
+  });
+
+  it("offers both HTML and Markdown downloads once a report exists", async () => {
+    mocks.getRun.mockResolvedValue(run);
+    mocks.listTasks.mockResolvedValue([task]);
+    mocks.listAttempts.mockResolvedValue([attempt]);
+    mocks.listEvents.mockResolvedValue({ events: [] });
+    mocks.getReport.mockResolvedValue(report);
+
+    renderWorkspace();
+
+    expect(await screen.findByRole("link", { name: "HTML" })).toHaveAttribute(
+      "href",
+      "http://localhost:8000/report.html",
+    );
+    expect(screen.getByRole("link", { name: "Markdown" })).toHaveAttribute(
+      "href",
+      "http://localhost:8000/report.md",
+    );
   });
 });

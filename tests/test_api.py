@@ -226,3 +226,57 @@ async def test_cancel_active_run_through_http() -> None:
         assert response.status_code == 200
         assert response.json()["status"] == "cancelled"
         assert (await database.tasks.list(run_id))[0].state.value == "cancelled"
+
+
+async def test_restart_creates_a_new_run_and_keeps_the_original() -> None:
+    client, state = await make_client()
+    async with client:
+        created = await client.post(
+            "/api/runs",
+            json={"goal": "Compare EV battery chemistries", "dimensions": ["cost"]},
+        )
+        run_id = created.json()["run_id"]
+        await state.orchestrator.wait(run_id)
+
+        restarted = await client.post(f"/api/runs/{run_id}/restart")
+        assert restarted.status_code == 201
+        body = restarted.json()
+        assert body["run_id"] != run_id
+        assert body["goal"] == "Compare EV battery chemistries"
+        assert body["dimensions"] == ["cost"]
+        await state.orchestrator.wait(body["run_id"])
+
+        original = await client.get(f"/api/runs/{run_id}")
+        assert original.status_code == 200
+        assert original.json()["run_id"] == run_id
+
+
+async def test_restart_rejects_a_missing_run() -> None:
+    client, _ = await make_client()
+    async with client:
+        response = await client.post("/api/runs/run_nope/restart")
+
+    assert response.status_code == 404
+
+
+async def test_report_html_is_self_contained() -> None:
+    client, state = await make_client()
+    async with client:
+        created = await client.post(
+            "/api/runs",
+            json={"goal": "Compare EV battery chemistries for cost and safety"},
+        )
+        run_id = created.json()["run_id"]
+        await state.orchestrator.wait(run_id)
+
+        response = await client.get(f"/api/runs/{run_id}/report.html")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "attachment" in response.headers["content-disposition"]
+    body = response.text
+    assert body.startswith("<!doctype html>")
+    assert "<style>" in body
+    # nothing may be fetched from the network when the file is opened later
+    assert "<script" not in body.lower()
+    assert "src=" not in body.lower()

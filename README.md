@@ -132,6 +132,8 @@ always win over env vars.
 | `GET` | `/api/runs/{run_id}/stream` | Live SSE progress stream |
 | `GET` | `/api/runs/{run_id}/report` | Get structured report |
 | `GET` | `/api/runs/{run_id}/report.md` | Download Markdown |
+| `GET` | `/api/runs/{run_id}/report.html` | Download a standalone HTML report |
+| `POST` | `/api/runs/{run_id}/restart` | Run the same question again as a new run |
 | `GET` | `/api/model-config` | Get the current model settings (key masked) |
 | `POST` | `/api/model-config` | Save model/base URL/API key |
 | `POST` | `/api/model-config/test` | Test the configured model connection |

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, reportMarkdownUrl } from "../api";
+import { api, reportHtmlUrl, reportMarkdownUrl } from "../api";
 import { useRunStream } from "../hooks/useRunStream";
 import type { Run } from "../types";
 import { STATUS_LABELS, isTerminal, statusTone } from "../lib/phases";
@@ -12,11 +12,13 @@ export default function RunWorkspace({
   traceOpen,
   onToggleTrace,
   onToggleRail,
+  onRestarted,
 }: {
   run: Run;
   traceOpen: boolean;
   onToggleTrace: () => void;
   onToggleRail: () => void;
+  onRestarted: (run: Run) => void;
 }) {
   const queryClient = useQueryClient();
   const runId = initialRun.run_id;
@@ -62,10 +64,21 @@ export default function RunWorkspace({
     },
   });
 
+  const restart = useMutation({
+    mutationFn: () => api.restartRun(runId),
+    onSuccess: (fresh) => {
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+      onRestarted(fresh);
+    },
+  });
+
   const tasks = tasksQuery.data ?? [];
   const attempts = attemptsQuery.data ?? [];
   const report = reportQuery.data;
   const blocked = run.status === "blocked" || run.status === "failed";
+  // A run that never reached a report is the one worth offering to run again.
+  const stoppedEarly =
+    run.status === "cancelled" || run.status === "failed" || run.status === "blocked";
 
   return (
     <>
@@ -80,14 +93,33 @@ export default function RunWorkspace({
             Trace
           </button>
           {report ? (
-            <a
+            <>
+              <a
+                className="tbtn bordered"
+                href={reportHtmlUrl(runId)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                HTML
+              </a>
+              <a
+                className="tbtn bordered"
+                href={reportMarkdownUrl(runId)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Markdown
+              </a>
+            </>
+          ) : null}
+          {!active && stoppedEarly ? (
+            <button
               className="tbtn bordered"
-              href={reportMarkdownUrl(runId)}
-              target="_blank"
-              rel="noreferrer"
+              onClick={() => restart.mutate()}
+              disabled={restart.isPending}
             >
-              Download
-            </a>
+              {restart.isPending ? "Starting…" : "Start over"}
+            </button>
           ) : null}
           {active ? (
             <button

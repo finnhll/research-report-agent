@@ -7,14 +7,20 @@ import App from "../App";
 const mocks = vi.hoisted(() => ({
   createRun: vi.fn(),
   listRuns: vi.fn(),
+  getRun: vi.fn(),
+  listTasks: vi.fn(),
+  listAttempts: vi.fn(),
+  listEvents: vi.fn(),
+  getReport: vi.fn(),
+  cancelRun: vi.fn(),
+  restartRun: vi.fn(),
 }));
 
 vi.mock("../api", () => ({
-  api: {
-    createRun: mocks.createRun,
-    listRuns: mocks.listRuns,
-  },
+  api: mocks,
   reportMarkdownUrl: vi.fn(() => "http://localhost:8000/report.md"),
+  reportHtmlUrl: vi.fn(() => "http://localhost:8000/report.html"),
+  API_BASE: "http://localhost:8000",
 }));
 
 function makeRun(overrides: Record<string, unknown> = {}) {
@@ -126,5 +132,49 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "cost" }));
 
     expect(screen.getByRole("button", { name: "tradeoffs" })).toBeEnabled();
+  });
+
+  it("opens the run workspace as soon as a question is submitted", async () => {
+    const fresh = makeRun();
+    mocks.listRuns.mockResolvedValue([]);
+    mocks.createRun.mockResolvedValue(fresh);
+    mocks.getRun.mockResolvedValue(fresh);
+    mocks.listTasks.mockResolvedValue([]);
+    mocks.listAttempts.mockResolvedValue([]);
+    mocks.listEvents.mockResolvedValue({ events: [] });
+    mocks.getReport.mockRejectedValue(new Error("not ready"));
+
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.type(
+      await screen.findByLabelText(/research goal/i),
+      "Compare battery chemistries",
+    );
+    await user.click(screen.getByRole("button", { name: /send/i }));
+
+    // the composer is replaced by the execution view, not left on screen
+    expect(await screen.findByRole("button", { name: /trace/i })).toBeInTheDocument();
+    expect(screen.queryByText(/what do you want researched/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /stop/i })).toBeInTheDocument();
+  });
+
+  it("returns to the composer only when New question is clicked", async () => {
+    const fresh = makeRun();
+    mocks.listRuns.mockResolvedValue([fresh]);
+    mocks.getRun.mockResolvedValue(fresh);
+    mocks.listTasks.mockResolvedValue([]);
+    mocks.listAttempts.mockResolvedValue([]);
+    mocks.listEvents.mockResolvedValue({ events: [] });
+    mocks.getReport.mockRejectedValue(new Error("not ready"));
+
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(await screen.findByRole("button", { name: /compare battery/i }));
+    expect(await screen.findByRole("button", { name: /trace/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /new question/i }));
+    expect(await screen.findByText(/what do you want researched/i)).toBeInTheDocument();
   });
 });

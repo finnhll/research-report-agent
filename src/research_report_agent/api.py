@@ -26,6 +26,7 @@ from research_report_agent.config import (
 )
 from research_report_agent.llm import LLMClient, LLMError
 from research_report_agent.orchestrator import Orchestrator
+from research_report_agent.report_html import render_report_html
 from research_report_agent.runtime_contracts import RunRecord, RunStatus
 from research_report_agent.storage import Database
 
@@ -206,6 +207,41 @@ def create_app(
             raise HTTPException(status_code=404, detail="Run not found")
         return updated
 
+    @app.post(
+        "/api/runs/{run_id}/restart",
+        response_model=RunRecord,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def restart_run(run_id: str, db: DatabaseDep) -> RunRecord:
+        """Run the same question again as a fresh run.
+
+        The original is left exactly as it was -- its tasks, attempts and events
+        stay on record -- because a stopped run is often the thing you want to
+        compare the new one against.
+        """
+        original = await db.runs.get(run_id)
+        if original is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        if original.status is RunStatus.RUNNING:
+            raise HTTPException(
+                status_code=409,
+                detail="Run is still active -- stop it before starting over",
+            )
+
+        new_id = f"run_{uuid.uuid4().hex[:16]}"
+        run = RunRecord(
+            run_id=new_id,
+            goal=original.goal,
+            dimensions=list(original.dimensions),
+        )
+        await db.runs.create(run)
+        try:
+            app.state.orchestrator.start(new_id, original.goal, list(original.dimensions))
+        except LLMError as exc:
+            await db.runs.set_terminal(new_id, RunStatus.FAILED, error=str(exc))
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return run
+
     @app.get("/api/runs/{run_id}/tasks")
     async def list_tasks(
         run_id: str,
@@ -302,6 +338,20 @@ def create_app(
             content=report.markdown,
             media_type="text/markdown",
             headers={"Content-Disposition": 'inline; filename="report.md"'},
+        )
+
+    @app.get("/api/runs/{run_id}/report.html")
+    async def get_report_html(run_id: str) -> Response:
+        run = await app.state.database.runs.get(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        report = await app.state.database.reports.get(run.run_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="Report not available")
+        return Response(
+            content=render_report_html(report, goal=run.goal),
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="report.html"'},
         )
 
     return app

@@ -43,6 +43,9 @@ export const api = {
   async cancelRun(runId: string): Promise<Run> {
     return request<Run>(`/api/runs/${runId}`, { method: "DELETE" });
   },
+  restartRun(runId: string): Promise<Run> {
+    return request<Run>(`/api/runs/${runId}/restart`, { method: "POST" });
+  },
   listTasks(runId: string): Promise<TaskRecord[]> {
     return request<TaskRecord[]>(`/api/runs/${runId}/tasks`);
   },
@@ -79,4 +82,8 @@ export const api = {
 
 export function reportMarkdownUrl(runId: string): string {
   return `${API_BASE}/api/runs/${runId}/report.md`;
+}
+
+export function reportHtmlUrl(runId: string): string {
+  return `${API_BASE}/api/runs/${runId}/report.html`;
 }
