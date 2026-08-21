@@ -57,6 +57,20 @@ font-family:ui-sans-serif,system-ui,sans-serif;font-size:.75rem;color:var(--ink-
 _INLINE = re.compile(r"(\*\*[^*]+\*\*|`[^`]+`|\[\d+\])")
 _BULLET = re.compile(r"^[-*]\s+")
 _NUMBERED = re.compile(r"^\d+[.)]\s+")
+_SAFE_SCHEMES = ("http://", "https://")
+
+
+def _safe_href(raw: str) -> str | None:
+    """Return the URL only when it is safe to make into a live link.
+
+    Escaping stops an attribute breakout but not the scheme, so a source URL of
+    ``javascript:...`` would otherwise render as a clickable href. Source URLs
+    come from model output and fetched web content, and this document is meant
+    to be emailed and opened offline, so anything that is not plain http(s)
+    stays inert text.
+    """
+    candidate = raw.strip()
+    return candidate if candidate.lower().startswith(_SAFE_SCHEMES) else None
 
 
 def _inline(text: str, citations: int) -> str:
@@ -162,10 +176,13 @@ def render_report_html(report: Any, *, goal: str = "") -> str:
     if sources:
         parts.append("<h2>Sources</h2><ol class='src'>")
         for index, source in enumerate(sources, start=1):
-            url = html.escape(str(source.get("url", "")))
+            raw_url = str(source.get("url", ""))
+            # Escape the label once, from the raw URL -- not from the escaped one.
+            label = html.escape(str(source.get("title") or raw_url))
+            href = _safe_href(raw_url)
+            link = f'<a href="{html.escape(href)}" rel="noreferrer">{label}</a>' if href else label
             parts.append(
-                f'<li id="s{index}"><span class="n">[{index}]</span><span>'
-                f'<a href="{url}" rel="noreferrer">{html.escape(str(source.get("title", url)))}</a>'
+                f'<li id="s{index}"><span class="n">[{index}]</span><span>{link}'
                 f"<small>{html.escape(str(source.get('publisher', '')))}</small></span></li>"
             )
         parts.append("</ol>")

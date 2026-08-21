@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from research_report_agent import __version__
 from research_report_agent.config import (
     PROVIDER_PRESETS,
     ModelConfigInfo,
@@ -95,7 +96,7 @@ def create_app(
 
     app = FastAPI(
         title="Research & Report Agent",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
     app.state.database = database

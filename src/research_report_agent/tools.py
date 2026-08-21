@@ -22,12 +22,13 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpx
 
+from research_report_agent import __version__
 from research_report_agent.runtime_contracts import ToolRequest, ToolResult, utc_now
 
 _SEARCH_URL = "https://html.duckduckgo.com/html/"
 _USER_AGENT = (
-    "Mozilla/5.0 (compatible; research-report-agent/0.1; "
-    "+https://github.com/finnhll/research-report-agent)"
+    f"Mozilla/5.0 (compatible; research-report-agent/{__version__}; "
+    "+https://github.com/finnhll/research-agent-practice)"
 )
 _MAX_RESULTS = 5
 _MAX_REDIRECTS = 3

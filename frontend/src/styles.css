@@ -964,6 +964,15 @@ a {
   padding-top: 2px;
 }
 
+.source-inert {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink-2);
+  display: block;
+  word-break: break-all;
+}
+
 .source-body a {
   font-size: 14px;
   font-weight: 500;

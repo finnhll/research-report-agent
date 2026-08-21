@@ -283,3 +283,31 @@ async def test_report_html_is_self_contained() -> None:
     # nothing may be fetched from the network when the file is opened later
     assert "<script" not in body.lower()
     assert "src=" not in body.lower()
+
+
+def test_report_html_refuses_to_link_a_javascript_url() -> None:
+    from types import SimpleNamespace
+
+    from research_report_agent.report_html import render_report_html
+
+    report = SimpleNamespace(
+        title="T",
+        created_at="2026-08-21",
+        structured={
+            "sources": [
+                {"url": "javascript:alert(1)", "title": "Click me", "publisher": "p"},
+                {"url": "  JavaScript:alert(2)", "title": "Sneaky", "publisher": "p"},
+                {"url": "data:text/html,<script>", "title": "Data", "publisher": "p"},
+                {"url": "https://ok.example/a?x=1&y=2", "publisher": "q"},
+            ]
+        },
+    )
+    out = render_report_html(report, goal="g")
+
+    # Unsafe schemes never become an href, but their text is still shown.
+    assert "javascript:" not in out.lower()
+    assert "data:text/html" not in out
+    assert "Click me" in out and "Sneaky" in out and "Data" in out
+    # http(s) still links, and a missing title falls back to a singly-escaped URL.
+    assert '<a href="https://ok.example/a?x=1&amp;y=2"' in out
+    assert "&amp;amp;" not in out
