@@ -192,8 +192,11 @@ async def test_cancel_run() -> None:
 
 
 async def test_cancel_active_run_through_http() -> None:
+    worker_started = asyncio.Event()
+
     class SlowWorkerRuntime(StubWorkerRuntime):
         async def execute_attempt(self, request, *, cancel_event=None):  # type: ignore[no-untyped-def]
+            worker_started.set()
             await asyncio.sleep(30)
             raise AssertionError("Slow worker should be cancelled")
 
@@ -213,13 +216,13 @@ async def test_cancel_active_run_through_http() -> None:
         )
         run_id = created.json()["run_id"]
 
-        for _ in range(100):
-            await asyncio.sleep(0.01)
-            tasks = await database.tasks.list(run_id)
-            if tasks and tasks[0].state.value == "running":
-                break
-        else:
-            raise AssertionError("Worker did not start")
+        # Wait on a signal from the worker rather than polling a fixed budget:
+        # the old 100 x 10ms loop gave the run one second to reach a running
+        # worker, which was enough locally but flaked on slower CI runners.
+        # The orchestrator marks the task RUNNING before it invokes the runtime,
+        # so once execute_attempt is entered that state is already durable.
+        await asyncio.wait_for(worker_started.wait(), timeout=30)
+        assert (await database.tasks.list(run_id))[0].state.value == "running"
 
         response = await client.delete(f"/api/runs/{run_id}")
 
